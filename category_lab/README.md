@@ -2,7 +2,17 @@
 
 Chạy các thí nghiệm theo topic của bài tập lớn trên **SQL Server (AWS RDS)** và **Redis**, đo kết quả và so sánh hai DBMS.
 
-Trạng thái: **phase F2**. Đã có `config`, `check`, `list`, `run` và topic mẫu `topics/t0_example`. Lệnh `scaffold`, `clean` (F3) và `report` (F4, F5) sẽ có ở các phase sau.
+Trạng thái: **phase F3**. Đã có `config`, `check`, `list`, `run`, `scaffold`, `clean` và topic mẫu `topics/t0_example`. Lệnh `report` (HTML, nhận xét Gemini) sẽ có ở phase F4 và F5.
+
+## Bắt đầu topic của bạn
+
+```bash
+# trong container lab (docker compose --profile lab run --rm lab bash)
+uv run lab scaffold t5_concurrency --owner "Nguyễn Văn A" --title "Concurrency control"
+uv run lab run concurrency              # chạy được ngay với scenario mẫu, rồi sửa dần
+uv run lab run concurrency --keep       # giữ bảng lab.concurrency__* và key lab:concurrency:* để xem lại
+uv run lab clean concurrency            # dọn khi xong (lab clean all: dọn hết dữ liệu lab)
+```
 
 ## Chạy bằng Docker (khuyên dùng)
 
@@ -70,6 +80,14 @@ def story_by_id(ctx: Ctx):
 | `check(cond, msg)` | Khẳng định được kiểm chứng. Chỉ cần một check sai là scenario thành `failed` |
 | `observe(text)` | Nhận xét của bạn |
 | `capture(label, content)` | Lưu bằng chứng thô vào `results/<run>/raw/` |
+| `inspect_sql(label, sql, *params)` | Chạy 1 lần với `STATISTICS IO/TIME` và actual plan: ghi `logical_reads`, `cpu_ms`, lưu plan dạng text và `.sqlplan` (mở bằng SSMS). Trả về `.io`, `.plan.physical_ops()`, `.plan.missing_indexes`, … |
+| `inspect_redis_key(label, key)` | Type, encoding (listpack, hashtable, skiplist, …), số phần tử, `MEMORY USAGE`; ghi `memory_bytes` |
+| `sandbox_table(name, "dbo.Story", where=, top=, primary_key=)` | Bản sao bảng tại `lab.<topic>__<name>`. **Bắt buộc dùng khi tạo index hoặc sửa dữ liệu**, vì RDS là DB dùng chung. Bảng được xoá sau khi chạy topic |
+| `workers(n, fn, iterations=, dbms=, autocommit=)` | n luồng chạy đồng thời, mỗi luồng có kết nối riêng (`w.sql`, `w.redis`), bắt đầu cùng lúc. Lỗi được gom lại (`r.errors`, `r.error_counts()`, ví dụ `sql:1205` là deadlock) chứ không làm dừng scenario |
+
+Các module dùng trực tiếp: `lab.framework.fixtures` (`load_hashes`, `load_json`, `load_strings` để nạp dòng SQL vào Redis), `lab.framework.sqlserver_probe` (`locks`, `waiting_tasks`, `session_id`; hai hàm đầu cần quyền `VIEW SERVER STATE`), `lab.framework.redis_probe` (`memory`, `persistence`, `encoding_thresholds`, `namespace_memory`).
+
+`workers` đo `wall_s` ở client, nên con số này có tính cả mạng. Chỉ dùng nó để so các lần chạy trên cùng một DBMS. Kết quả của các bài concurrency là **số đếm**: số update bị mất, số xung đột, số deadlock.
 
 Tuỳ chọn của `@scenario`: `id`, `pair`, `targets={"local","aws"}`, `destructive=True` (cần `--allow-destructive` mới chạy), `repeat`, `warmup`. Có thể gắn thêm `@ten_ham.setup` và `@ten_ham.teardown` (teardown luôn chạy, kể cả khi scenario lỗi).
 
@@ -89,8 +107,11 @@ lab/connections.py   SqlServer (pyodbc) và RedisClient (redis-py + namespace la
 lab/checks.py        các hạng mục của `lab check`
 lab/cli.py           Typer CLI
 lab/views.py         bảng Rich cho list/run
+lab/maintenance.py   scaffold và clean
 lab/framework/       scenario.py (@scenario, Ctx), bench.py (đo phía server), registry.py (tự tìm topic),
-                     runner.py (chạy, bắt lỗi, ghi run.json), result.py (model pydantic)
-topics/t0_example/   topic mẫu
+                     runner.py (chạy, bắt lỗi, dọn dữ liệu, ghi run.json), result.py (model pydantic),
+                     sqlserver_probe.py, redis_probe.py, concurrency.py, fixtures.py
+topics/_template/    mẫu cho `lab scaffold`
+topics/t0_example/   topic mẫu: 3 cặp (đọc theo khoá, top rating, đếm lượt xem đồng thời)
 tests/               test không cần DB
 ```

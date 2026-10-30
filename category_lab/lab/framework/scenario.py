@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
-from lab.framework import bench
+from lab.framework import bench, concurrency, fixtures, redis_probe, sqlserver_probe
 from lab.framework.result import Artifact, Check, Dbms, Metric, Stats
 
 if TYPE_CHECKING:
@@ -154,6 +154,49 @@ class Ctx:
                                    note=note or "Redis: tổng duration trong SLOWLOG của các lệnh"))
         return stats
 
+    # --- looking inside the DBMS (diagnostics, F3) -------------------------------------------------
+    def inspect_sql(self, label: str, sql: str, *params: Any, plan: bool = True) -> "sqlserver_probe.Inspection":
+        """Run the statement once with STATISTICS IO/TIME and the actual plan. Records logical_reads
+        and saves the plan (text summary + .sqlplan XML, which SSMS can open) as artifacts."""
+        result = sqlserver_probe.inspect(self.sql, sql, *params, plan=plan)
+        self.metrics.append(Metric(name="logical_reads", label=label, value=result.logical_reads, unit="page",
+                                   note="STATISTICS IO, gồm cả LOB logical reads (trang 8 KB)"))
+        if result.cpu_ms is not None:
+            self.metrics.append(Metric(name="cpu_ms", label=label, value=result.cpu_ms, unit="ms",
+                                       resolution_ms=1.0, note="STATISTICS TIME, độ phân giải 1 ms"))
+        self.capture(f"{label}.io", [vars(t) for t in result.io])
+        if result.plans:
+            self.capture(f"{label}.plan", "\n\n".join(p.text() for p in result.plans), kind="text")
+            for i, xml in enumerate(result.plan_xml):
+                self.capture(f"{label}.plan{i or ''}", xml, kind="sqlplan")
+        return result
+
+    def inspect_redis_key(self, label: str, key: str) -> dict[str, Any]:
+        """Type, encoding, element count and MEMORY USAGE of one key. Records memory_bytes."""
+        info = redis_probe.key_info(self.redis, key)
+        self.metrics.append(Metric(name="memory_bytes", label=label, value=info["memory_bytes"] or 0, unit="byte",
+                                   note=f"MEMORY USAGE, type {info['type']}, encoding {info['encoding']}"))
+        return info
+
+    # --- shared data ---------------------------------------------------------------------------------
+    def sandbox_table(self, name: str, source: str, *, where: str | None = None, top: int | None = None,
+                      primary_key: list[str] | None = None) -> str:
+        """Copy `source` (e.g. "dbo.Story") into lab.<topic>__<name> and return that table name.
+        Use it whenever a scenario creates indexes or changes data. Dropped after the topic."""
+        return fixtures.copy_table(self.sql, self.scenario.topic, name, source, where=where, top=top,
+                                   primary_key=primary_key)
+
+    # --- many sessions at once -----------------------------------------------------------------------
+    def workers(self, n: int, fn: Callable[["concurrency.Worker", int], Any], *, iterations: int = 1,
+                dbms: Literal["sqlserver", "redis", "both"] | None = None, autocommit: bool = True,
+                start_together: bool = True, timeout_s: float = 120) -> "concurrency.WorkersResult":
+        """Run fn(worker, iteration) in n threads, each with its own connection(s). See concurrency.py."""
+        dbms = dbms or self.scenario.dbms or "sqlserver"
+        open_sql = (lambda: self.sql.new_connection(autocommit=autocommit)) if dbms in ("sqlserver", "both") else None
+        open_redis = (lambda: self.redis.new_connection()) if dbms in ("redis", "both") else None
+        return concurrency.run_workers(n, fn, iterations=iterations, open_sql=open_sql, open_redis=open_redis,
+                                       start_together=start_together, timeout_s=timeout_s)
+
     def metric(self, name: str, value: float, unit: str = "", label: str = "",
                better: Literal["lower", "higher", "none"] = "lower", note: str = "") -> None:
         """Any other number: logical reads, bytes, lost updates, RPO seconds ..."""
@@ -175,7 +218,7 @@ class Ctx:
             kind = "json" if isinstance(content, (dict, list)) else (
                 "xml" if isinstance(content, str) and content.lstrip().startswith("<") else "text")
         safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in label)
-        ext = kind if kind in ("json", "xml") else "txt"
+        ext = kind if kind in ("json", "xml", "sqlplan") else "txt"
         target = self._artifact_dir / f"{self.scenario.id}.{safe}.{ext}"
         target.parent.mkdir(parents=True, exist_ok=True)
         text = json.dumps(content, ensure_ascii=False, indent=2, default=str) if kind == "json" else str(content)

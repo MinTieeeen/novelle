@@ -1,7 +1,7 @@
 """Command line entry point: `uv run lab <command>`.
 
-Commands:          config, check (F1), list, run (F2)
-Later phases add:  scaffold, clean (F3), report (F4-F5)
+Commands:          config, check (F1), list, run (F2), scaffold, clean (F3)
+Later phases add:  report (F4-F5)
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from lab import views
+from lab import maintenance, views
 from lab.checks import run_checks
 from lab.config import ConfigError, LabConfig, load_config, mask
 from lab.framework import registry, runner
@@ -111,7 +111,10 @@ def run(topic: str = typer.Argument(..., help="id topic (vd. indexing) hoặc 'a
         repeat: int | None = typer.Option(None, "--repeat", "-n", min=1,
                                           help="Ghi đè số lần đo của mọi bench."),
         allow_destructive: bool = typer.Option(False, "--allow-destructive",
-                                               help="Cho phép chạy scenario có destructive=True.")) -> None:
+                                               help="Cho phép chạy scenario có destructive=True."),
+        keep: bool = typer.Option(False, "--keep",
+                                  help="Giữ bảng lab.<topic>__* và key lab:<topic>:* sau khi chạy để xem lại "
+                                       "(dọn bằng `lab clean`).")) -> None:
     """Chạy scenario, in kết quả và lưu results/<runId>/run.json."""
     cfg = _load(target)
     topics = registry.select(_discover(), topic, dbms.value, scenario)
@@ -124,7 +127,8 @@ def run(topic: str = typer.Argument(..., help="id topic (vd. indexing) hoặc 'a
 
     console.print(f"[bold]Chạy {sum(len(t.scenarios) for t in topics)} scenario[/] "
                   f"(SQL Server = RDS, Redis = {cfg.target})")
-    result, run_dir = runner.run(topics, cfg, runner.RunOptions(allow_destructive=allow_destructive, repeat=repeat),
+    result, run_dir = runner.run(topics, cfg, runner.RunOptions(allow_destructive=allow_destructive, repeat=repeat,
+                                                                   keep=keep),
                                  listener=views.ProgressPrinter(console))
 
     for table in views.scenario_details(result):
@@ -138,6 +142,46 @@ def run(topic: str = typer.Argument(..., help="id topic (vd. indexing) hoặc 'a
     console.print(" · ".join(f"[{views.RUN_STYLE[k]}]{k}: {v}[/]" for k, v in counts.items()))
     console.print(f"Kết quả: [cyan]{(run_dir / 'run.json').as_posix()}[/]")
     if counts.get("error") or counts.get("failed") or any(t.load_errors for t in topics):
+        raise typer.Exit(1)
+
+    if keep:
+        console.print("[yellow]--keep: dữ liệu lab được giữ lại, nhớ chạy `lab clean <topic>` khi xong.[/]")
+
+
+@app.command()
+def scaffold(folder: str = typer.Argument(..., help="Tên folder mới, dạng t<số>_<id>, vd. t5_concurrency."),
+             owner: str = typer.Option(..., "--owner", "-o", help="Tên người phụ trách topic."),
+             title: str | None = typer.Option(None, "--title", help="Tên topic hiển thị trong report.")) -> None:
+    """Tạo folder topic mới từ topics/_template (không ghi đè folder đã có)."""
+    try:
+        target = maintenance.scaffold(folder, owner, title)
+    except (ValueError, FileExistsError) as exc:
+        console.print(f"[bold red]Không tạo được:[/] {exc}")
+        raise typer.Exit(2)
+    console.print(f"[green]Đã tạo[/] {target.relative_to(target.parents[1]).as_posix()}/")
+    for f in sorted(p for p in target.rglob("*") if p.is_file()):
+        console.print(f"  {f.relative_to(target).as_posix()}")
+    console.print(f"Tiếp theo: sửa TOPIC trong __init__.py, viết scenario, rồi `lab run {folder.split('_', 1)[1]}`.")
+
+
+@app.command()
+def clean(topic: str = typer.Argument(..., help="id topic, hoặc 'all' để xoá mọi bảng lab.* và key lab:*."),
+          target: str | None = TargetOption,
+          sql: bool = typer.Option(True, "--sql/--no-sql"),
+          redis: bool = typer.Option(True, "--redis/--no-redis")) -> None:
+    """Xoá dữ liệu lab còn sót: bảng sandbox lab.<topic>__* trên RDS và key lab:<topic>:* trên Redis."""
+    cfg = _load(target)
+    if topic != "all" and not maintenance.TOPIC_ID.match(topic):
+        console.print(f"[bold red]id topic không hợp lệ:[/] {topic}")
+        raise typer.Exit(2)
+    r = maintenance.clean(cfg, None if topic == "all" else topic, sql=sql, redis=redis)
+    if sql:
+        console.print(f"SQL Server: xoá {len(r.tables)} bảng" + (f" ({', '.join(r.tables)})" if r.tables else ""))
+    if redis:
+        console.print(f"Redis ({cfg.target}): xoá {r.redis_keys} key")
+    for err in r.errors:
+        console.print(f"[bold red]{err}[/]")
+    if r.errors:
         raise typer.Exit(1)
 
 

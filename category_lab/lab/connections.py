@@ -24,6 +24,18 @@ _GO = re.compile(r"^\s*GO\s*(?:--.*)?$", re.IGNORECASE | re.MULTILINE)
 LAB_KEY_ROOT = "lab"
 
 
+_SQL_ERROR_NUMBER = re.compile(r"\((\d{3,6})\)\s*\(SQL\w+\)")
+
+
+def sql_error_number(exc: BaseException) -> int | None:
+    """SQL Server error number inside a pyodbc error, e.g. 1205 (deadlock victim), 2627 (duplicate key),
+    50000+ (RAISERROR/THROW from a procedure). None for anything else."""
+    if not isinstance(exc, pyodbc.Error):
+        return None
+    numbers = [int(n) for n in _SQL_ERROR_NUMBER.findall(" ".join(str(a) for a in exc.args))]
+    return numbers[0] if numbers else None
+
+
 def split_batches(script: str) -> list[str]:
     """Split a T-SQL script on GO lines, like sqlcmd does. Empty batches are dropped."""
     return [b.strip() for b in _GO.split(script) if b.strip()]

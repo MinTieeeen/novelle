@@ -77,8 +77,26 @@ def scenario_details(result: RunResult) -> list[Table]:
     return tables
 
 
+def _verdict(sql_m: Metric, redis_m: Metric) -> str:
+    """Which DBMS did better on one metric, honouring `better` and the timing resolution."""
+    if sql_m.better == "none":
+        return "-"
+    noise = (sql_m.resolution_ms or 0) + (redis_m.resolution_ms or 0)
+    if abs(sql_m.value - redis_m.value) <= noise:
+        return "[yellow]ngang nhau trong sai số đo[/]" if noise else "bằng nhau"
+    lower_wins = sql_m.better == "lower"
+    sql_wins = (sql_m.value < redis_m.value) == lower_wins
+    win, lose = (sql_m, redis_m) if sql_wins else (redis_m, sql_m)
+    name = "SQL Server" if sql_wins else "Redis"
+    if win.value and lose.value and (win.value > 0) == (lose.value > 0):
+        ratio = max(win.value, lose.value) / min(win.value, lose.value)
+        return f"{name} tốt hơn ×{ratio:.1f}"
+    return f"{name} tốt hơn"
+
+
 def pair_comparison(result: RunResult) -> Table | None:
-    """For every pair, put the server_ms p50 of each DBMS side by side."""
+    """For every pair: the best server_ms variant of each DBMS, then every metric (same name and label)
+    that both sides recorded, e.g. lost_updates · atomic_update."""
     pairs: dict[str, dict[str, list[Metric]]] = defaultdict(lambda: defaultdict(list))
     titles: dict[str, str] = {}
     for topic in result.topics:
@@ -86,34 +104,39 @@ def pair_comparison(result: RunResult) -> Table | None:
             if s.pair and s.status in ("passed", "failed"):
                 key = f"{topic.topic.id}/{s.pair}"
                 titles.setdefault(key, s.title)
-                pairs[key][s.dbms] += [m for m in s.metrics if m.name == "server_ms"]
+                pairs[key][s.dbms] += s.metrics
     if not pairs:
         return None
-    table = Table(title="So sánh theo cặp: thời gian xử lý phía server, p50 (ms)")
-    for col in ("Cặp", "SQL Server", "Redis", "Nhanh hơn"):
+    table = Table(title="So sánh theo cặp (thời gian = xử lý phía server, p50)")
+    for col in ("Cặp", "Metric", "SQL Server", "Redis", "Kết luận"):
         table.add_column(col)
     for key, by_dbms in pairs.items():
-        def cell(dbms: str) -> tuple[str, Metric | None]:
-            ms = by_dbms.get(dbms, [])
-            if not ms:
-                return "-", None
-            best = min(ms, key=lambda m: m.value)
-            lines = [f"{m.label or 'server_ms'}: {m.value:.3f}" + (COARSE if m.coarse else "")
-                     for m in ms]
-            return "\n".join(lines), best
-        sql_text, sql_best = cell("sqlserver")
-        redis_text, redis_best = cell("redis")
-        verdict = "-"
-        if sql_best and redis_best:
-            # A difference smaller than what the two timing methods can resolve is not a result.
-            noise = (sql_best.resolution_ms or 0) + (redis_best.resolution_ms or 0)
-            if abs(sql_best.value - redis_best.value) <= noise:
-                verdict = "[yellow]ngang nhau trong sai số đo[/]"
-            else:
-                slow, fast = sorted((sql_best, redis_best), key=lambda m: -m.value)
-                winner = "Redis" if fast is redis_best else "SQL Server"
-                verdict = f"{winner} ×{slow.value / max(fast.value, 1e-9):.1f} (biến thể tốt nhất)"
-        table.add_row(f"{key}\n[dim]{titles[key]}[/]", sql_text, redis_text, verdict)
+        sql_ms, redis_ms = by_dbms.get("sqlserver", []), by_dbms.get("redis", [])
+        rows: list[tuple[str, str, str, str]] = []
+
+        def timing_cell(ms: list[Metric]) -> str:
+            return "\n".join(f"{m.label or '-'}: {m.value:.3f}{COARSE if m.coarse else ''}" for m in ms) or "-"
+
+        sql_t = [m for m in sql_ms if m.name == "server_ms"]
+        redis_t = [m for m in redis_ms if m.name == "server_ms"]
+        if sql_t and redis_t:
+            verdict = _verdict(min(sql_t, key=lambda m: m.value), min(redis_t, key=lambda m: m.value))
+            rows.append(("server_ms (ms)", timing_cell(sql_t), timing_cell(redis_t),
+                         verdict + " [dim](biến thể tốt nhất)[/]"))
+        elif sql_t or redis_t:
+            rows.append(("server_ms (ms)", timing_cell(sql_t), timing_cell(redis_t), "-"))
+
+        redis_by_id = {(m.name, m.label): m for m in redis_ms if m.name != "server_ms"}
+        for m in sql_ms:
+            other = redis_by_id.get((m.name, m.label))
+            if m.name == "server_ms" or other is None:
+                continue
+            rows.append((f"{m.name} · {m.label}" + (f" ({m.unit})" if m.unit else ""),
+                         f"{m.value:g}", f"{other.value:g}", _verdict(m, other)))
+
+        for i, (metric, sql_text, redis_text, verdict) in enumerate(rows or [("-", "-", "-", "-")]):
+            table.add_row(f"{key}\n[dim]{titles[key]}[/]" if i == 0 else "", metric, sql_text, redis_text, verdict)
+        table.add_section()
     return table
 
 

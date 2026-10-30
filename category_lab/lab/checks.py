@@ -107,8 +107,10 @@ def check_sqlserver(cfg: LabConfig, report: CheckReport) -> None:
 
         def sandbox() -> tuple[Status, str]:
             exists = db.scalar("SELECT COUNT(*) FROM sys.schemas WHERE name = 'lab'")
-            return ("PASS", "schema lab đã có") if exists else (
-                "WARN", "chưa có schema lab (sẽ được tạo ở phase F3 bằng fixtures)")
+            tables = db.scalar("SELECT COUNT(*) FROM sys.tables WHERE schema_id = SCHEMA_ID('lab')") if exists else 0
+            return ("PASS", f"schema lab đã có, {tables} bảng sandbox còn lại"
+                            + (" (dọn bằng `lab clean all`)" if tables else "")) if exists else (
+                "WARN", "chưa có schema lab (tự tạo khi scenario gọi ctx.sandbox_table)")
 
         def rtt() -> tuple[Status, str]:
             med, worst = round_trip_ms(lambda: db.scalar("SELECT 1"), samples=10)

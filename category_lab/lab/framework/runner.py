@@ -5,7 +5,8 @@ For every scenario:  skip?  ->  setup  ->  scenario  ->  teardown (always)  ->  
   error    an exception was raised (traceback kept); the other scenarios still run
   failed   it ran, but at least one ctx.check(...) was false
   passed   otherwise
-After each topic the Redis keys of its namespace (lab:<topic>:*) are deleted.
+After each topic its Redis keys (lab:<topic>:*) and its SQL Server sandbox tables (lab.<topic>__*) are
+deleted, unless RunOptions.keep is set (`lab run --keep`, to look at the data afterwards).
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from typing import Callable, Protocol
 
 from lab.config import LAB_DIR, LabConfig
 from lab.connections import RedisClient, SqlServer
+from lab.framework import fixtures
 from lab.framework.registry import Topic
 from lab.framework.result import Environment, RunResult, ScenarioResult, TopicInfo, TopicResult
 from lab.framework.scenario import Ctx, ScenarioDef
@@ -34,6 +36,7 @@ class Listener(Protocol):
 class RunOptions:
     allow_destructive: bool = False
     repeat: int | None = None                 # overrides the repeat count of every bench
+    keep: bool = False                        # keep sandbox tables and Redis keys after the run
     results_dir: Path = RESULTS_DIR
 
 
@@ -58,6 +61,10 @@ class Connections:
                 self.errors[dbms] = f"{type(exc).__name__}: {exc}"
                 return None
         return self._open[dbms]
+
+    def opened(self, dbms: str):
+        """The connection if it was already opened in this run, else None (never connects)."""
+        return self._open.get(dbms)
 
     def close(self) -> None:
         for conn in self._open.values():
@@ -139,6 +146,20 @@ def run_scenario(s: ScenarioDef, conns: Connections, cfg: LabConfig, options: Ru
                 observations=ctx.observations, artifacts=ctx.artifacts)
 
 
+def cleanup_topic(topic: str, conns: Connections) -> None:
+    """Drop what the topic's scenarios left behind. Failures are ignored: `lab clean` can retry."""
+    if (redis := conns.opened("redis")) is not None:
+        try:
+            redis.scoped(topic).cleanup()
+        except Exception:
+            pass
+    if (db := conns.opened("sqlserver")) is not None:
+        try:
+            fixtures.drop_topic_tables(db, topic)
+        except Exception:
+            pass
+
+
 def run(topics: list[Topic], cfg: LabConfig, options: RunOptions | None = None,
         listener: Listener | None = None, conns: Connections | None = None) -> tuple[RunResult, Path]:
     options = options or RunOptions()
@@ -162,11 +183,8 @@ def run(topics: list[Topic], cfg: LabConfig, options: RunOptions | None = None,
                 topic_result.scenarios.append(r)
                 if listener:
                     listener.scenario_finished(s, r)
-            if (redis := conns.get("redis")) is not None and any(s.dbms == "redis" for s in topic.scenarios):
-                try:
-                    redis.scoped(topic.meta.id).cleanup()
-                except Exception:
-                    pass
+            if not options.keep:
+                cleanup_topic(topic.meta.id, conns)
             result.topics.append(topic_result)
     finally:
         conns.close()
