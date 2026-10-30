@@ -80,6 +80,35 @@ def test_report_is_self_contained_and_escapes_text(tmp_path: Path):
     assert "<link" not in html and "src=\"http" not in html                       # nothing loaded from the network
 
 
+def test_inline_params_skips_literals_and_comments():
+    from lab.framework.bench import inline_params
+    sql = "SELECT '?' AS q, x FROM t -- what?\nWHERE a = ? /* b = ? */ AND n = ? AND s = ?"
+    assert inline_params(sql, (1, None, "O'Neil")) == \
+        "SELECT '?' AS q, x FROM t -- what?\nWHERE a = 1 /* b = ? */ AND n = NULL AND s = N'O''Neil'"
+    assert inline_params("WHERE a = ?", ()) == "WHERE a = ?"                     # count mismatch: unchanged
+    assert inline_params("WHERE a = 'it''s ?' AND b = ?", (2,)) == "WHERE a = 'it''s ?' AND b = 2"
+
+
+def test_pair_has_sql_and_redis_tabs_with_statements(tmp_path: Path):
+    from lab.framework.result import Statement
+    results = tmp_path / "results"
+    sql = scenario("demo.sqlserver.a", "sqlserver", "a", [timing("pk_seek", [0.05], 0.01)])
+    sql.statements = [Statement(label="pk_seek", lang="sql", text="SELECT * FROM dbo.Story WHERE StoryId = 1")]
+    red = scenario("demo.redis.a", "redis", "a", [timing("hgetall", [0.003], 0.001)])
+    red.statements = [Statement(label="hgetall", lang="redis", text="HGETALL lab:demo:story:1", note="1 lệnh")]
+    old = scenario("demo.redis.b", "redis", "b", [], title="Không có câu lệnh")    # result from before the feature
+    save(results, run("r1", T0, [sql, red, old]))
+
+    html = builder.render(loader.load("r1", results), tmp_path / "reports" / "r1.html")
+    assert 'role="tablist"' in html and 'id="pair-demo-a-tab-sqlserver"' in html
+    import re
+    assert re.search(r'id="pair-demo-a-code-sqlserver" aria-labelledby="[^"]+"\s*>', html)   # first tab shown
+    assert re.search(r'id="pair-demo-a-code-redis" aria-labelledby="[^"]+"\s*hidden>', html)  # second hidden
+    assert "SELECT * FROM dbo.Story WHERE StoryId = 1" in html and "HGETALL lab:demo:story:1" in html
+    assert "không ghi lại câu lệnh" in html                                       # pair b, Redis side
+    assert '<span class="pair-key">' not in html
+
+
 def test_latest_per_scenario_merges_runs(tmp_path: Path):
     results = tmp_path / "results"
     old_sql = scenario("demo.sqlserver.a", "sqlserver", "a", [timing("v", [1.0], 0.01)])

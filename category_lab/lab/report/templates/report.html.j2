@@ -103,10 +103,33 @@
   {% for pv in tv.pairs %}
   {% set p = pv.pair %}
   <article class="card pair" id="pair-{{ topic.id }}-{{ p.key }}">
+    {% set pid = "pair-" ~ topic.id ~ "-" ~ p.key %}
     <header class="pair-head">
       <h3>{{ p.title }}</h3>
-      <span class="pair-key"><code>{{ p.key }}</code></span>
+      <div class="code-tabs" role="tablist" aria-label="Câu lệnh đã chạy">
+        {% for dbms in ["sqlserver", "redis"] %}
+        <button type="button" role="tab" id="{{ pid }}-tab-{{ dbms }}" aria-controls="{{ pid }}-code-{{ dbms }}"
+                aria-selected="{{ 'true' if loop.first else 'false' }}" tabindex="{{ 0 if loop.first else -1 }}">
+          <i class="sw {{ 's1' if dbms == 'sqlserver' else 's2' }}"></i>{{ dbms_name[dbms] }}
+        </button>
+        {% endfor %}
+      </div>
     </header>
+    <div class="code-panels">
+      {% for dbms, sv in [("sqlserver", pv.sql), ("redis", pv.redis)] %}
+      <div role="tabpanel" id="{{ pid }}-code-{{ dbms }}" aria-labelledby="{{ pid }}-tab-{{ dbms }}"
+           {% if not loop.first %}hidden{% endif %}>
+        <h4 class="print-only"><i class="sw {{ 's1' if dbms == 'sqlserver' else 's2' }}"></i>{{ dbms_name[dbms] }}</h4>
+        {% if sv and sv.s.statements %}
+          {% for st in sv.s.statements %}{% include "_statement.html.j2" %}{% endfor %}
+        {% elif sv %}
+          <p class="muted small">Lần chạy này không ghi lại câu lệnh nào. Chạy lại <code>lab run {{ topic.id }}</code>, hoặc gọi <code>ctx.statement(label, text)</code> cho đoạn code không đi qua bench.</p>
+        {% else %}
+          <p class="muted small">Chưa có scenario {{ dbms_name[dbms] }} cho cặp này.</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
 
     {% if pv.timing_rows %}
     <div class="figure">
@@ -163,7 +186,9 @@
   <div class="card">
     <h3>Scenario không ghép cặp</h3>
     {% for sv in tv.unpaired %}
-      <div class="side solo"><h4><i class="sw {{ 's1' if sv.s.dbms == 'sqlserver' else 's2' }}"></i>{{ dbms_name[sv.s.dbms] }} · {{ sv.s.title }}</h4>{% include "_scenario.html.j2" %}</div>
+      <div class="side solo"><h4><i class="sw {{ 's1' if sv.s.dbms == 'sqlserver' else 's2' }}"></i>{{ dbms_name[sv.s.dbms] }} · {{ sv.s.title }}</h4>
+        {% if sv.s.statements %}<details class="statements"><summary>Câu lệnh đã chạy</summary>{% for st in sv.s.statements %}{% include "_statement.html.j2" %}{% endfor %}</details>{% endif %}
+        {% include "_scenario.html.j2" %}</div>
     {% endfor %}
   </div>
   {% endif %}

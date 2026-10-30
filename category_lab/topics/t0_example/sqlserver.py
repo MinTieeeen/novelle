@@ -46,6 +46,12 @@ def view_counter(ctx: Ctx):
     def atomic(w, i):                   # một câu UPDATE: SQL Server giữ khoá X trên dòng trong lúc cộng
         w.sql.exec(f"UPDATE {table} SET ViewCount = ViewCount + 1 WHERE StoryId = ?", story_id)
 
+    # The workers are not benchmarked, so write down what each one runs for the report's SQL tab.
+    ctx.statement("read_then_write", f"SELECT ViewCount FROM {table} WHERE StoryId = {story_id};\n"
+                                     f"-- ứng dụng cộng 1 ở phía client rồi ghi lại:\n"
+                                     f"UPDATE {table} SET ViewCount = @gia_tri_doc_duoc + 1 WHERE StoryId = {story_id};")
+    ctx.statement("atomic_update", f"UPDATE {table} SET ViewCount = ViewCount + 1 WHERE StoryId = {story_id};")
+
     for label, fn in (("read_then_write", read_then_write), ("atomic_update", atomic)):
         ctx.sql.exec(f"UPDATE {table} SET ViewCount = 0 WHERE StoryId = ?", story_id)
         r = ctx.workers(VIEWS_WORKERS, fn, iterations=VIEWS_EACH)

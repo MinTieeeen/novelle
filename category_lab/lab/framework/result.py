@@ -52,6 +52,14 @@ class Check(BaseModel):
     message: str
 
 
+class Statement(BaseModel):
+    """A statement the scenario ran, as plain text for the report's SQL / Redis tabs."""
+    label: str                       # the variant it belongs to, e.g. "pk_seek"
+    lang: Literal["sql", "redis"]
+    text: str                        # SQL with parameters inlined, or Redis commands one per line
+    note: str = ""
+
+
 class Artifact(BaseModel):
     label: str
     path: str                        # relative to the run folder
@@ -74,6 +82,7 @@ class ScenarioResult(BaseModel):
     checks: list[Check] = Field(default_factory=list)
     observations: list[str] = Field(default_factory=list)
     artifacts: list[Artifact] = Field(default_factory=list)
+    statements: list[Statement] = Field(default_factory=list)
 
 
 class TopicInfo(BaseModel):

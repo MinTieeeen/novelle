@@ -157,10 +157,11 @@ class RedisServerTimer:
         return int(entries[0]["id"]) if entries else -1
 
     def run_once(self, fn: Callable[[RedisClient], Any]) -> float:
-        """Run fn(bench_client) and return the server execution time of its commands, in microseconds."""
+        """Run fn(bench_client) and return the server execution time of its commands, in microseconds.
+        The commands themselves (as SLOWLOG shows them) are kept in self.last_commands, oldest first."""
         start_id = self._last_id()
         fn(self.bench)
-        total, seen = 0.0, 0
+        total, commands = 0.0, []
         for entry in self.admin.slowlog_get(-1):          # newest first
             if int(entry["id"]) <= start_id:
                 break
@@ -169,15 +170,66 @@ class RedisServerTimer:
             if _text(entry.get("client_name")) != self.name or command.split(" ", 1)[0].upper() in IGNORED_REDIS_COMMANDS:
                 continue
             total += float(entry["duration"])
-            seen += 1
-        if seen == 0:
+            commands.append(command)
+        if not commands:
             raise RuntimeError("no Redis command was recorded: did fn use the client it was given?")
+        self.last_commands = commands[::-1]
         return total
 
 
-def bench_redis(client: RedisClient, fn: Callable[[RedisClient], Any], repeat: int = 20, warmup: int = 3) -> Stats:
+@dataclass
+class RedisBenchResult:
+    stats: Stats
+    commands: list[str]           # what one run sent, as SLOWLOG records it (long args are truncated)
+
+
+def bench_redis(client: RedisClient, fn: Callable[[RedisClient], Any], repeat: int = 20,
+                warmup: int = 3) -> RedisBenchResult:
     with RedisServerTimer(client) as timer:
         for _ in range(warmup):
             timer.run_once(fn)
         samples_ms = [timer.run_once(fn) / 1000 for _ in range(repeat)]
-    return summarize(samples_ms)
+    return RedisBenchResult(summarize(samples_ms), timer.last_commands)
+
+
+# --- statements as text, for the report ---------------------------------------------------------------
+def sql_literal(value: Any) -> str:
+    """A Python parameter written as a T-SQL literal."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)) or type(value).__name__ == "Decimal":
+        return str(value)
+    if isinstance(value, (bytes, bytearray)):
+        return "0x" + bytes(value).hex().upper()
+    if hasattr(value, "isoformat"):
+        return "'" + value.isoformat() + "'"
+    return "N'" + str(value).replace("'", "''") + "'"
+
+
+def inline_params(sql: str, params: tuple | list) -> str:
+    """Replace each ? placeholder with its value, skipping ? inside string literals and comments, so the
+    statement can be pasted into SSMS. Left unchanged if the counts do not match."""
+    out, i, n, values = [], 0, len(sql), list(params)
+    used = 0
+    while i < n:
+        c = sql[i]
+        if c == "'":                                       # string literal ('' is an escaped quote)
+            j = i + 1
+            while j < n and not (sql[j] == "'" and (j + 1 >= n or sql[j + 1] != "'")):
+                j += 2 if sql[j] == "'" else 1
+            out.append(sql[i:j + 1]); i = j + 1
+        elif sql.startswith("--", i):
+            j = sql.find("\n", i); j = n if j < 0 else j
+            out.append(sql[i:j]); i = j
+        elif sql.startswith("/*", i):
+            j = sql.find("*/", i + 2); j = n if j < 0 else j + 2
+            out.append(sql[i:j]); i = j
+        elif c == "?":
+            if used >= len(values):
+                return sql
+            out.append(sql_literal(values[used])); used += 1; i += 1
+        else:
+            out.append(c); i += 1
+    return "".join(out) if used == len(values) else sql

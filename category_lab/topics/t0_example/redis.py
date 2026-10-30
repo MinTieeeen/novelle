@@ -69,6 +69,8 @@ def view_counter(ctx: Ctx):
         w.redis.incr(w.redis.key("views", "story", 1))
 
     key = ctx.redis.key("views", "story", 1)
+    ctx.statement("read_then_write", f"GET {key}\n# ứng dụng cộng 1 ở phía client rồi ghi lại:\nSET {key} <giá trị đọc được + 1>")
+    ctx.statement("atomic_update", f"INCR {key}")
     for label, fn in (("read_then_write", read_then_write), ("atomic_update", atomic)):
         ctx.redis.set(key, 0)
         r = ctx.workers(VIEWS_WORKERS, fn, iterations=VIEWS_EACH)

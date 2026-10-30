@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
 from lab.framework import bench, concurrency, fixtures, redis_probe, sqlserver_probe
-from lab.framework.result import Artifact, Check, Dbms, Metric, Stats
+from lab.framework.result import Artifact, Check, Dbms, Metric, Statement, Stats
 
 if TYPE_CHECKING:
     from lab.connections import RedisClient, SqlServer
@@ -98,6 +98,7 @@ class Ctx:
         self.checks: list[Check] = []
         self.observations: list[str] = []
         self.artifacts: list[Artifact] = []
+        self.statements: list[Statement] = []
 
     # --- connections -------------------------------------------------------------------------------
     @property
@@ -141,24 +142,39 @@ class Ctx:
         self.metrics.append(Metric(name="server_ms", label=label, value=r.stats.p50, unit="ms", stats=r.stats,
                                    method=bench.METHOD_SQL_LOOP, resolution_ms=r.resolution_ms,
                                    note=note or how))
+        self.statement(label, bench.inline_params(sql, params), lang="sql")
         return r.stats
 
     def bench_redis(self, label: str, fn: Callable[["RedisClient"], Any], repeat: int | None = None,
                     warmup: int | None = None, note: str = "") -> Stats:
         """Time fn(client) on the server (sum of SLOWLOG durations of its commands) and record server_ms.
-        fn must send its commands through the client it receives."""
+        fn must send its commands through the client it receives. The commands of one run are kept
+        for the report's Redis tab."""
         n, w = self._counts(repeat, warmup)
-        stats = bench.bench_redis(self.redis, fn, repeat=n, warmup=w)
-        self.metrics.append(Metric(name="server_ms", label=label, value=stats.p50, unit="ms", stats=stats,
+        r = bench.bench_redis(self.redis, fn, repeat=n, warmup=w)
+        self.metrics.append(Metric(name="server_ms", label=label, value=r.stats.p50, unit="ms", stats=r.stats,
                                    method=bench.METHOD_SLOWLOG, resolution_ms=0.001,
                                    note=note or "Redis: tổng duration trong SLOWLOG của các lệnh"))
-        return stats
+        self.statement(label, "\n".join(r.commands), lang="redis",
+                       note=f"{len(r.commands)} lệnh mỗi lần chạy, lấy từ SLOWLOG")
+        return r.stats
+
+    def statement(self, label: str, text: str, lang: Literal["sql", "redis"] | None = None,
+                  note: str = "") -> None:
+        """Show a statement in the report's SQL / Redis tab. bench_sql, bench_redis and inspect_sql call
+        this themselves; call it for code that is not benchmarked, e.g. what the workers run."""
+        lang = lang or ("redis" if self.scenario.dbms == "redis" else "sql")
+        text = text.strip()
+        if any(s.label == label and s.lang == lang and s.text == text for s in self.statements):
+            return
+        self.statements.append(Statement(label=label, lang=lang, text=text, note=note))
 
     # --- looking inside the DBMS (diagnostics, F3) -------------------------------------------------
     def inspect_sql(self, label: str, sql: str, *params: Any, plan: bool = True) -> "sqlserver_probe.Inspection":
         """Run the statement once with STATISTICS IO/TIME and the actual plan. Records logical_reads
         and saves the plan (text summary + .sqlplan XML, which SSMS can open) as artifacts."""
         result = sqlserver_probe.inspect(self.sql, sql, *params, plan=plan)
+        self.statement(label, bench.inline_params(sql, params), lang="sql")
         self.metrics.append(Metric(name="logical_reads", label=label, value=result.logical_reads, unit="page",
                                    note="STATISTICS IO, gồm cả LOB logical reads (trang 8 KB)"))
         if result.cpu_ms is not None:

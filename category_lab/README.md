@@ -92,6 +92,7 @@ def story_by_id(ctx: Ctx):
 | `metric(name, value, unit)` | Số đo khác: số byte, số update bị mất, … |
 | `check(cond, msg)` | Khẳng định được kiểm chứng. Chỉ cần một check sai là scenario thành `failed` |
 | `observe(text)` | Nhận xét của bạn |
+| `statement(label, text)` | Ghi câu lệnh để hiện trong tab **SQL Server / Redis** của cặp trong report. `bench_sql` và `inspect_sql` tự ghi câu SQL (tham số `?` được thay bằng giá trị thật), `bench_redis` tự ghi các lệnh Redis thật lấy từ SLOWLOG. Chỉ cần gọi tay cho đoạn code không đi qua bench, ví dụ phần `workers` chạy |
 | `capture(label, content)` | Lưu bằng chứng thô vào `results/<run>/raw/` |
 | `inspect_sql(label, sql, *params)` | Chạy 1 lần với `STATISTICS IO/TIME` và actual plan: ghi `logical_reads`, `cpu_ms`, lưu plan dạng text và `.sqlplan` (mở bằng SSMS). Trả về `.io`, `.plan.physical_ops()`, `.plan.missing_indexes`, … |
 | `inspect_redis_key(label, key)` | Type, encoding (listpack, hashtable, skiplist, …), số phần tử, `MEMORY USAGE`; ghi `memory_bytes` |

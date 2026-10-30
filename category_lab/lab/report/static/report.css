@@ -86,6 +86,27 @@ table { border-collapse: collapse; width: 100%; }
 .topic-head h2 { font-size: 24px; margin: 0 0 4px; }
 .pair { scroll-margin-top: 16px; }
 .pair-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+/* SQL Server / Redis tabs in the pair header, with the statements each side ran */
+.code-tabs { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 8px;
+             background: var(--page); }
+.code-tabs [role="tab"] { font: inherit; font-size: 13.5px; color: var(--text-secondary); background: transparent;
+                          border: 0; border-radius: 6px; padding: 4px 12px; cursor: pointer; white-space: nowrap; }
+.code-tabs [role="tab"]:hover { background: var(--accent-wash); }
+.code-tabs [role="tab"][aria-selected="true"] { background: var(--surface-1); color: var(--text-primary);
+                                                font-weight: 600; box-shadow: 0 0 0 1px var(--border); }
+.code-tabs [role="tab"]:focus-visible { outline: 2px solid var(--series-1); outline-offset: 1px; }
+.code-panels { margin: 4px 0 14px; }
+.print-only { display: none; }
+.stmt + .stmt { margin-top: 10px; }
+.stmt-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 13.5px; }
+.stmt-label { font-weight: 600; }
+.stmt-head .copy { margin-left: auto; font: inherit; font-size: 12.5px; color: var(--text-secondary);
+                   background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 1px 8px;
+                   cursor: pointer; }
+.stmt-head .copy:hover { background: var(--accent-wash); }
+.stmt pre { margin-top: 4px; max-height: 320px; }
+.stmt code { background: none; padding: 0; font-size: inherit; }
+
 .ai { border-left: 3px solid var(--series-1); }
 .ai-note { font-size: 13px; color: var(--text-muted); }
 .badge { font-size: 12px; font-weight: 500; color: var(--text-secondary); border: 1px solid var(--border);
@@ -138,7 +159,9 @@ summary { cursor: pointer; color: var(--text-secondary); }
 }
 @media print {
   .viz-root { background: #fff; }
-  .theme-toggle, .tooltip { display: none !important; }
+  .theme-toggle, .tooltip, .code-tabs, .stmt-head .copy { display: none !important; }
+  [role="tabpanel"][hidden] { display: block !important; }   /* print both sides' statements */
+  .print-only { display: block; }
   .card, .tile { break-inside: avoid; border-color: #ccc; }
   .topic { break-before: page; }
   pre { max-height: none; white-space: pre-wrap; }

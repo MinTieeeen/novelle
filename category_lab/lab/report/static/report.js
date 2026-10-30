@@ -15,6 +15,47 @@
     });
   }
 
+  // SQL Server / Redis tabs of each pair (WAI-ARIA tabs: click, or Left/Right/Home/End on the tab list).
+  document.querySelectorAll(".code-tabs").forEach(function (list) {
+    const tabs = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
+    function select(tab, focus) {
+      tabs.forEach(function (t) {
+        const on = t === tab;
+        t.setAttribute("aria-selected", on ? "true" : "false");
+        t.tabIndex = on ? 0 : -1;
+        const panel = document.getElementById(t.getAttribute("aria-controls"));
+        if (panel) panel.hidden = !on;
+      });
+      if (focus) tab.focus();
+    }
+    tabs.forEach(function (tab, i) {
+      tab.addEventListener("click", function () { select(tab, false); });
+      tab.addEventListener("keydown", function (e) {
+        const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+        if (next === undefined) return;
+        e.preventDefault();
+        select(tabs[(next + tabs.length) % tabs.length], true);
+      });
+    });
+  });
+
+  // "Sao chép" copies the statement text (falls back to selecting it when the clipboard is unavailable).
+  document.querySelectorAll(".stmt .copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const code = btn.closest(".stmt").querySelector("code");
+      const done = function () { btn.textContent = "Đã chép"; setTimeout(function () { btn.textContent = "Sao chép"; }, 1500); };
+      const select = function () {
+        const range = document.createRange(); range.selectNodeContents(code);
+        const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(code.textContent).then(done, select);
+      } else {
+        select();
+      }
+    });
+  });
+
   const tip = document.querySelector(".tooltip");
   if (!tip) return;
   function show(mark, x, y) {

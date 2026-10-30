@@ -143,7 +143,7 @@ def run_scenario(s: ScenarioDef, conns: Connections, cfg: LabConfig, options: Ru
 
     status = "error" if error else ("failed" if any(not c.passed for c in ctx.checks) else "passed")
     return done(status=status, error=error.strip(), metrics=ctx.metrics, checks=ctx.checks,
-                observations=ctx.observations, artifacts=ctx.artifacts)
+                observations=ctx.observations, artifacts=ctx.artifacts, statements=ctx.statements)
 
 
 def _read_notes(folder: Path) -> str:
