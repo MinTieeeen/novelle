@@ -132,8 +132,8 @@ def run(topic: str = typer.Argument(..., help="id topic (vd. indexing) hoặc 'a
     if (pairs := views.pair_comparison(result)) is not None:
         console.print(pairs)
     if views.coarse_timing_used(result):
-        console.print(f"{views.COARSE} SQL Server được đo bằng SYSDATETIME(), chỉ chính xác khoảng 1 ms. "
-                      "Cấp quyền VIEW SERVER STATE cho user của lab để dùng sys.dm_exec_query_stats (µs).")
+        console.print(f"{views.COARSE} Độ phân giải của phép đo lớn hơn 10% giá trị, nên chữ số cuối không đáng tin. "
+                      "Redis SLOWLOG tính theo µs nguyên; SQL Server chia theo số lần lặp trong batch (inner=).")
     counts = views.status_counts(result)
     console.print(" · ".join(f"[{views.RUN_STYLE[k]}]{k}: {v}[/]" for k, v in counts.items()))
     console.print(f"Kết quả: [cyan]{(run_dir / 'run.json').as_posix()}[/]")

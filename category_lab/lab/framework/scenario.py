@@ -130,25 +130,18 @@ class Ctx:
                 self.scenario.warmup if warmup is None else warmup)
 
     def bench_sql(self, label: str, sql: str, *params: Any, repeat: int | None = None,
-                  warmup: int | None = None, note: str = "") -> Stats:
-        """Time a SQL statement/batch on the server and record server_ms (+ server_cpu_ms and
-        logical_reads when sys.dm_exec_query_stats is readable). Returns the elapsed-time stats."""
+                  warmup: int | None = None, inner: int | None = None, note: str = "") -> Stats:
+        """Time one execution of a SQL statement on the server and record server_ms.
+        Each sample runs the statement `inner` times in one batch (auto-calibrated when None);
+        pass inner=1 for statements that change data."""
         n, w = self._counts(repeat, warmup)
-        r = bench.bench_sql(self.sql, sql, *params, repeat=n, warmup=w)
-        if r.method == bench.METHOD_QUERY_STATS:
-            how = "SQL Server: last_elapsed_time trong sys.dm_exec_query_stats (µs, do engine đo)"
-        else:
-            how = ("SQL Server: SYSDATETIME() trước/sau câu lệnh. Độ phân giải khoảng 1 ms trên RDS, "
-                   "cần quyền VIEW SERVER STATE để đo chính xác hơn")
-        self.metrics.append(Metric(name="server_ms", label=label, value=r.elapsed_ms.p50, unit="ms",
-                                   stats=r.elapsed_ms, method=r.method, note=note or how))
-        if r.cpu_ms is not None:
-            self.metrics.append(Metric(name="server_cpu_ms", label=label, value=r.cpu_ms.p50, unit="ms",
-                                       stats=r.cpu_ms, method=r.method, note="last_worker_time"))
-        if r.logical_reads is not None:
-            self.metrics.append(Metric(name="logical_reads", label=label, value=r.logical_reads.p50, unit="page",
-                                       stats=r.logical_reads, method=r.method, note="last_logical_reads (trang 8 KB)"))
-        return r.elapsed_ms
+        r = bench.bench_sql(self.sql, sql, *params, repeat=n, warmup=w, inner=inner)
+        how = (f"SQL Server: SYSDATETIME() quanh vòng lặp {r.inner} lần trong 1 batch, chia {r.inner}; "
+               f"độ phân giải ~{r.resolution_ms * 1000:.0f} µs")
+        self.metrics.append(Metric(name="server_ms", label=label, value=r.stats.p50, unit="ms", stats=r.stats,
+                                   method=bench.METHOD_SQL_LOOP, resolution_ms=r.resolution_ms,
+                                   note=note or how))
+        return r.stats
 
     def bench_redis(self, label: str, fn: Callable[["RedisClient"], Any], repeat: int | None = None,
                     warmup: int | None = None, note: str = "") -> Stats:
@@ -157,7 +150,7 @@ class Ctx:
         n, w = self._counts(repeat, warmup)
         stats = bench.bench_redis(self.redis, fn, repeat=n, warmup=w)
         self.metrics.append(Metric(name="server_ms", label=label, value=stats.p50, unit="ms", stats=stats,
-                                   method=bench.METHOD_SLOWLOG,
+                                   method=bench.METHOD_SLOWLOG, resolution_ms=0.001,
                                    note=note or "Redis: tổng duration trong SLOWLOG của các lệnh"))
         return stats
 

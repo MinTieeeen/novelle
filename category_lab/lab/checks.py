@@ -79,15 +79,11 @@ def check_sqlserver(cfg: LabConfig, report: CheckReport) -> None:
                 "SELECT IS_ROLEMEMBER('db_owner') AS owner, "
                 "HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'SHOWPLAN') AS showplan, "
                 "HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'VIEW DATABASE STATE') AS dbstate, "
-                "HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'CREATE TABLE') AS ddl, "
-                "HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE') AS serverstate")[0]
+                "HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'CREATE TABLE') AS ddl")[0]
             missing = [n for n, k in (("SHOWPLAN", "showplan"), ("VIEW DATABASE STATE", "dbstate"),
-                                      ("CREATE TABLE", "ddl"), ("VIEW SERVER STATE", "serverstate")) if not row[k]]
+                                      ("CREATE TABLE", "ddl")) if not row[k]]
             detail = ("db_owner" if row["owner"] else "không phải db_owner") + (
-                f"; thiếu: {', '.join(missing)}" if missing
-                else "; đủ SHOWPLAN, VIEW DATABASE STATE, VIEW SERVER STATE, DDL")
-            if "VIEW SERVER STATE" in missing:
-                detail += " (bench_sql sẽ dùng SYSDATETIME, độ phân giải ~1 ms)"
+                f"; thiếu: {', '.join(missing)}" if missing else "; đủ SHOWPLAN, VIEW DATABASE STATE, DDL")
             return ("WARN" if missing else "PASS"), detail
 
         def fulltext() -> tuple[Status, str]:

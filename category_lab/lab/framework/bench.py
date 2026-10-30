@@ -1,15 +1,18 @@
 """Server-side timing. Only the time the DBMS itself spends is measured, never the client/network time.
 
-SQL Server  Preferred: sys.dm_exec_query_stats (needs VIEW SERVER STATE). SQL Server measures every
-            execution with a high-resolution counter and keeps last_elapsed_time / last_worker_time (µs)
-            and last_logical_reads per statement. The benchmarked text gets a unique marker comment
-            /* lab-bench:<id> */ so its cached plan can be found; after each run those columns are read.
-            For a batch with several statements the values of its statements are added up.
-            Fallback (no permission, or the plan is not in the cache, e.g. a bare EXEC of a procedure):
-            SYSDATETIME() before/after the statement in the same batch. On RDS (Windows) that clock only
-            moves in ~1 ms steps, so it cannot resolve sub-millisecond statements; the metric says so.
-            In both cases the rows the statement returns are still sent, so for very large results the
-            time includes filling the network buffers (ASYNC_NETWORK_IO).
+SQL Server  The statement runs K times inside ONE batch, between two SYSDATETIME() calls:
+                DECLARE @lab_i INT = 0, @lab_t0 DATETIME2(7) = SYSDATETIME();
+                WHILE @lab_i < K BEGIN <statement>; SET @lab_i += 1; END
+                SELECT DATEDIFF_BIG(MICROSECOND, @lab_t0, SYSDATETIME()) / K.0;
+            The clock is read by SQL Server, so no network time is included. On RDS (Windows) SYSDATETIME
+            only moves in ~1 ms steps; dividing by K brings the resolution down to ~1/K ms. K is chosen
+            automatically so that one batch takes ~100 ms (1 <= K <= 1000), or set with `inner=`.
+            Why not sys.dm_exec_query_stats / Query Store: on the RDS t3.micro instance SQL Server gets
+            ~174 MB, the plan cache holds only a few plans and evicts them immediately, and Query Store in
+            AUTO capture mode ignores cheap statements, so neither keeps per-execution numbers.
+            Rows the statement returns are sent to the client K times; K is also capped so one batch
+            returns at most OUTPUT_BUDGET_BYTES, otherwise the server waits on the network
+            (ASYNC_NETWORK_IO). A statement that changes data runs K times: use inner=1.
 
 Redis       SLOWLOG with threshold 0 records the execution time (µs) of every command on the server.
             The bench connections get their own client name; after each run the durations of the new
@@ -33,8 +36,7 @@ from lab.framework.result import Stats
 
 IGNORED_REDIS_COMMANDS = {"CLIENT", "SLOWLOG", "PING", "HELLO", "SELECT", "AUTH"}
 
-METHOD_QUERY_STATS = "dm_exec_query_stats"
-METHOD_SYSDATETIME = "sysdatetime"
+METHOD_SQL_LOOP = "sysdatetime_loop"
 METHOD_SLOWLOG = "slowlog"
 
 
@@ -50,107 +52,79 @@ def summarize(samples: list[float]) -> Stats:
                  max=ordered[-1], mean=statistics.fmean(ordered), samples=[round(s, 4) for s in samples])
 
 
-def _drain(cur) -> list[tuple[str, list]]:
-    """Read every result set of the current statement; returns (first column name, rows) per set."""
+def _drain(cur) -> list[tuple[list[str], list]]:
+    """Read every result set of the current statement; returns (column names, rows) per set."""
     sets = []
     while True:
         if cur.description is not None:
-            sets.append((cur.description[0][0], cur.fetchall()))
+            sets.append(([c[0] for c in cur.description], cur.fetchall()))
         if not cur.nextset():
             return sets
 
 
+def _approx_bytes(columns: list[str], rows: list) -> int:
+    """Rough size of a result set on the wire: column metadata + values as text."""
+    return sum(30 + 2 * len(c) for c in columns) + sum(8 * len(r) + sum(len(str(v)) for v in r) for r in rows)
+
+
 # --- SQL Server -------------------------------------------------------------------------------------
+MAX_INNER = 1000
+TARGET_BATCH_US = 100_000           # aim for ~100 ms per measured batch
+CLOCK_STEP_US = 1000.0              # SYSDATETIME() granularity observed on RDS (Windows)
+# Rows the statement returns are streamed to the client K times. Once the socket buffers fill up, the
+# server waits for the client (ASYNC_NETWORK_IO) and network time leaks into the measurement: measured
+# on RDS, a PK lookup returning ~400 B went from ~20 µs (K=200) to ~155 µs (K=1000). Keep one batch's
+# output well under that.
+OUTPUT_BUDGET_BYTES = 48_000
+
+
 @dataclass
 class SqlBenchResult:
-    elapsed_ms: Stats
-    cpu_ms: Stats | None          # only with dm_exec_query_stats
-    logical_reads: Stats | None   # only with dm_exec_query_stats
-    method: str
+    stats: Stats                    # per-execution time in ms (each sample = mean over `inner` runs)
+    inner: int
+    resolution_ms: float            # CLOCK_STEP / inner
 
 
-def can_view_server_state(db: SqlServer) -> bool:
-    return bool(db.scalar("SELECT HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE')"))
-
-
-class QueryStatsTimer:
-    """Measures one statement/batch through sys.dm_exec_query_stats."""
-
-    _FIND = ("SELECT DISTINCT qs.sql_handle FROM sys.dm_exec_query_stats qs "
-             "CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) t WHERE t.text LIKE ?")
-    _READ = ("SELECT SUM(execution_count) AS n, SUM(last_elapsed_time) AS elapsed_us, "
-             "SUM(last_worker_time) AS cpu_us, SUM(last_logical_reads) AS reads "
-             "FROM sys.dm_exec_query_stats WHERE sql_handle = ?")
-
-    def __init__(self, db: SqlServer, sql: str):
-        self.db = db
-        self.marker = f"lab-bench:{uuid.uuid4().hex}"
-        self.text = f"/* {self.marker} */\n{sql.strip()}"
-        self.handle: bytes | None = None
-        self.count = 0
-
-    def _execute(self, *params: Any) -> None:
-        with self.db.conn.cursor() as cur:
-            cur.execute(self.text, *params)
-            _drain(cur)
-
-    def _read(self) -> dict | None:
-        if self.handle is None:
-            # The marker is passed as a parameter, so this lookup never matches its own text.
-            rows = self.db.query(self._FIND, f"%{self.marker}%")
-            if len(rows) != 1:
-                return None
-            self.handle = rows[0]["sql_handle"]
-        row = self.db.query(self._READ, self.handle)[0]
-        return row if row["n"] is not None else None
-
-    def run_once(self, *params: Any) -> tuple[float, float, float] | None:
-        """(elapsed_us, cpu_us, logical_reads) of one execution, or None if the plan cannot be found."""
-        self._execute(*params)
-        row = self._read()
-        if row is None or row["n"] <= self.count:      # plan evicted or recompiled: look it up again
-            self.handle, self.count = None, 0
-            row = self._read()
-            if row is None:
-                return None
-        self.count = row["n"]
-        return float(row["elapsed_us"]), float(row["cpu_us"]), float(row["reads"])
-
-
-def wrap_with_server_timer(sql: str) -> str:
+def loop_batch(sql: str, inner: int) -> str:
     return ("SET NOCOUNT ON;\n"
-            "DECLARE @lab_t0 DATETIME2(7) = SYSDATETIME();\n"
-            f"{sql.strip().rstrip(';')};\n"
-            "SELECT DATEDIFF_BIG(MICROSECOND, @lab_t0, SYSDATETIME()) AS lab_server_us;")
+            "DECLARE @lab_i INT = 0, @lab_t0 DATETIME2(7) = SYSDATETIME();\n"
+            f"WHILE @lab_i < {inner}\nBEGIN\n{sql.strip().rstrip(';')};\nSET @lab_i += 1;\nEND\n"
+            f"SELECT DATEDIFF_BIG(MICROSECOND, @lab_t0, SYSDATETIME()) / {inner}.0 AS lab_server_us;")
 
 
-def sysdatetime_us(db: SqlServer, sql: str, *params: Any) -> float:
-    """Fallback: elapsed time between two SYSDATETIME() calls around the statement, in microseconds."""
+def _run_loop(db: SqlServer, sql: str, *params: Any, inner: int) -> tuple[float, int]:
+    """(mean server µs per execution, bytes of rows returned by the whole batch)."""
     with db.conn.cursor() as cur:
-        cur.execute(wrap_with_server_timer(sql), *params)
+        cur.execute(loop_batch(sql, inner), *params)
         sets = _drain(cur)
-    timer = [rows for name, rows in sets if name == "lab_server_us" and rows]
+    timer = [rows for cols, rows in sets if cols[:1] == ["lab_server_us"] and rows]
     if not timer:
         raise RuntimeError("the server timer did not return a value (did the statement raise an error?)")
-    return float(timer[-1][-1][0])
+    output = sum(_approx_bytes(cols, rows) for cols, rows in sets if cols[:1] != ["lab_server_us"])
+    return float(timer[-1][-1][0]), output
 
 
-def bench_sql(db: SqlServer, sql: str, *params: Any, repeat: int = 20, warmup: int = 3) -> SqlBenchResult:
-    if can_view_server_state(db):
-        timer = QueryStatsTimer(db, sql)
-        for _ in range(warmup):
-            timer.run_once(*params)
-        samples = [timer.run_once(*params) for _ in range(repeat)]
-        if all(s is not None for s in samples):
-            return SqlBenchResult(elapsed_ms=summarize([s[0] / 1000 for s in samples]),
-                                  cpu_ms=summarize([s[1] / 1000 for s in samples]),
-                                  logical_reads=summarize([s[2] for s in samples]),
-                                  method=METHOD_QUERY_STATS)
+def server_time_us(db: SqlServer, sql: str, *params: Any, inner: int = 1) -> float:
+    """Mean server-side time of one execution of `sql`, measured over `inner` executions, in µs."""
+    return _run_loop(db, sql, *params, inner=inner)[0]
+
+
+def choose_inner(db: SqlServer, sql: str, *params: Any) -> int:
+    """Calibrate K from a 10-run batch: ~TARGET_BATCH_US per batch, and at most OUTPUT_BUDGET_BYTES of
+    returned rows per batch (see OUTPUT_BUDGET_BYTES)."""
+    estimate_us, output = _run_loop(db, sql, *params, inner=10)
+    by_time = TARGET_BATCH_US / max(estimate_us, 1.0)
+    by_output = OUTPUT_BUDGET_BYTES / max(output / 10, 1.0)
+    return max(1, min(MAX_INNER, int(by_time), int(by_output)))
+
+
+def bench_sql(db: SqlServer, sql: str, *params: Any, repeat: int = 20, warmup: int = 3,
+              inner: int | None = None) -> SqlBenchResult:
+    k = inner if inner is not None else choose_inner(db, sql, *params)
     for _ in range(warmup):
-        sysdatetime_us(db, sql, *params)
-    samples_ms = [sysdatetime_us(db, sql, *params) / 1000 for _ in range(repeat)]
-    return SqlBenchResult(elapsed_ms=summarize(samples_ms), cpu_ms=None, logical_reads=None,
-                          method=METHOD_SYSDATETIME)
+        server_time_us(db, sql, *params, inner=k)
+    samples_ms = [server_time_us(db, sql, *params, inner=k) / 1000 for _ in range(repeat)]
+    return SqlBenchResult(stats=summarize(samples_ms), inner=k, resolution_ms=CLOCK_STEP_US / k / 1000)
 
 
 # --- Redis ------------------------------------------------------------------------------------------

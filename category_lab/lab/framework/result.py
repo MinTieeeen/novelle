@@ -36,7 +36,14 @@ class Metric(BaseModel):
     unit: str = ""
     better: Literal["lower", "higher", "none"] = "lower"
     stats: Stats | None = None       # present for timings
-    method: str = ""                 # how a timing was measured: dm_exec_query_stats | sysdatetime | slowlog
+    method: str = ""                 # how a timing was measured: sysdatetime_loop | slowlog
+    resolution_ms: float | None = None   # smallest difference the timing method can see
+
+    @property
+    def coarse(self) -> bool:
+        """True when the method's resolution is more than 10% of the measured value."""
+        return self.resolution_ms is not None and self.resolution_ms > 0.1 * max(self.value, 1e-9)
+
     note: str = ""
 
 

@@ -64,7 +64,7 @@ def story_by_id(ctx: Ctx):
 |---|---|
 | `sql.query / scalar / exec / exec_file`, `run_sql_file("sql/x.sql")` | Chạy SQL trên RDS |
 | `redis` + `redis.key("story", 1)` | Lệnh Redis bất kỳ. Key luôn có tiền tố `lab:<topic>:` và được xoá sau khi chạy xong topic |
-| `bench_sql(label, sql, *params)` | Đo **thời gian xử lý phía SQL Server**, ghi `server_ms` (kèm `server_cpu_ms`, `logical_reads` nếu đo được bằng `dm_exec_query_stats`) |
+| `bench_sql(label, sql, *params, inner=None)` | Đo **thời gian xử lý phía SQL Server** của 1 lần thực thi, ghi `server_ms`. Câu lệnh ghi dữ liệu phải truyền `inner=1` |
 | `bench_redis(label, fn)` | Đo **thời gian xử lý phía Redis** của `fn(client)` qua SLOWLOG. `fn` phải dùng đúng `client` được truyền vào |
 | `metric(name, value, unit)` | Số đo khác: số byte, số update bị mất, … |
 | `check(cond, msg)` | Khẳng định được kiểm chứng. Chỉ cần một check sai là scenario thành `failed` |
@@ -74,8 +74,10 @@ def story_by_id(ctx: Ctx):
 Tuỳ chọn của `@scenario`: `id`, `pair`, `targets={"local","aws"}`, `destructive=True` (cần `--allow-destructive` mới chạy), `repeat`, `warmup`. Có thể gắn thêm `@ten_ham.setup` và `@ten_ham.teardown` (teardown luôn chạy, kể cả khi scenario lỗi).
 
 **Chỉ đo thời gian phía server.** Thời gian mạng giữa máy bạn và RDS không được tính:
-- SQL Server: `sys.dm_exec_query_stats` (µs). Cần quyền `VIEW SERVER STATE`, xem `lab check`. Nếu thiếu quyền thì dùng `SYSDATETIME()`, chỉ chính xác khoảng 1 ms và được đánh dấu `*`.
-- Redis: `SLOWLOG` với ngưỡng 0 được bật tạm trong lúc đo, rồi trả về cấu hình cũ.
+- SQL Server: câu lệnh được chạy K lần trong **một batch**, giữa hai lần đọc `SYSDATETIME()`, rồi chia cho K. Trên RDS đồng hồ này chỉ nhảy theo bước khoảng 1 ms, nên K được tự chọn (1 đến 1000, mỗi batch khoảng 100 ms) để độ phân giải còn khoảng 1/K ms. Vì câu lệnh bị lặp, câu **INSERT/UPDATE/DELETE phải dùng `inner=1`**.
+- Không dùng `sys.dm_exec_query_stats` hay Query Store: trên RDS t3.micro, SQL Server chỉ có khoảng 174 MB RAM nên plan cache bị đẩy ra ngay, còn Query Store ở chế độ AUTO không ghi các truy vấn nhẹ.
+- Redis: `SLOWLOG` với ngưỡng 0 được bật tạm trong lúc đo rồi trả về cấu hình cũ. Đơn vị là µs nguyên.
+- Mỗi metric thời gian có `resolution_ms`. Dấu `*` nghĩa là độ phân giải lớn hơn 10% giá trị. Hai DBMS chỉ được coi là khác nhau khi chênh lệch lớn hơn tổng độ phân giải của hai phép đo.
 
 Mỗi lần `lab run` ghi kết quả vào `results/<runId>/run.json`.
 

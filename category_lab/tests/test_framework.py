@@ -7,7 +7,7 @@ import pytest
 
 from lab.config import load_config
 from lab.framework import registry, runner
-from lab.framework.bench import summarize, wrap_with_server_timer
+from lab.framework.bench import loop_batch, summarize
 
 
 # --- bench -----------------------------------------------------------------------------------------
@@ -17,11 +17,20 @@ def test_summarize_percentiles():
     assert s.samples == [5, 1, 3, 2, 4, 10, 6, 7, 8, 9]          # original order kept
 
 
-def test_server_timer_wraps_statement_in_one_batch():
-    wrapped = wrap_with_server_timer("SELECT * FROM dbo.Story WHERE StoryId = ?;")
-    assert wrapped.splitlines()[1].startswith("DECLARE @lab_t0 DATETIME2(7) = SYSDATETIME()")
-    assert "WHERE StoryId = ?;" in wrapped and ";;" not in wrapped
-    assert wrapped.endswith("AS lab_server_us;")
+def test_loop_batch_runs_statement_k_times_between_server_clock_reads():
+    batch = loop_batch("SELECT * FROM dbo.Story WHERE StoryId = ?;", 50)
+    lines = batch.splitlines()
+    assert lines[1] == "DECLARE @lab_i INT = 0, @lab_t0 DATETIME2(7) = SYSDATETIME();"
+    assert lines[2] == "WHILE @lab_i < 50"
+    assert "WHERE StoryId = ?;" in batch and ";;" not in batch and batch.count("?") == 1
+    assert lines[-1] == "SELECT DATEDIFF_BIG(MICROSECOND, @lab_t0, SYSDATETIME()) / 50.0 AS lab_server_us;"
+
+
+def test_metric_is_coarse_when_resolution_above_ten_percent():
+    from lab.framework.result import Metric
+    assert Metric(name="server_ms", value=0.05, resolution_ms=0.02).coarse
+    assert not Metric(name="server_ms", value=0.05, resolution_ms=0.005).coarse
+    assert not Metric(name="rows", value=3).coarse
 
 
 # --- a throw-away topics package ---------------------------------------------------------------------

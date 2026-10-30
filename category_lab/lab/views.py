@@ -6,7 +6,6 @@ from collections import defaultdict
 from rich.console import Console
 from rich.table import Table
 
-from lab.framework.bench import METHOD_SYSDATETIME
 from lab.framework.registry import Topic
 from lab.framework.result import Metric, RunResult, ScenarioResult
 from lab.framework.scenario import ScenarioDef
@@ -50,12 +49,12 @@ class ProgressPrinter:
                            f"[dim]({r.duration_s:.1f}s)[/] {extra}")
 
 
-COARSE = "[yellow]*[/]"   # marks timings measured with SYSDATETIME (~1 ms steps)
+COARSE = "[yellow]*[/]"   # the timing method cannot resolve this value well (resolution > 10%)
 
 
 def _fmt(m: Metric) -> str:
     if m.stats:
-        mark = COARSE if m.method == METHOD_SYSDATETIME else ""
+        mark = COARSE if m.coarse else ""
         return f"{m.stats.p50:.3f}{mark} [dim](p95 {m.stats.p95:.3f}, n={m.stats.count})[/]"
     return f"{m.value:g}"
 
@@ -94,29 +93,32 @@ def pair_comparison(result: RunResult) -> Table | None:
     for col in ("Cặp", "SQL Server", "Redis", "Nhanh hơn"):
         table.add_column(col)
     for key, by_dbms in pairs.items():
-        def cell(dbms: str) -> tuple[str, float | None]:
+        def cell(dbms: str) -> tuple[str, Metric | None]:
             ms = by_dbms.get(dbms, [])
             if not ms:
                 return "-", None
             best = min(ms, key=lambda m: m.value)
-            lines = [f"{m.label or 'server_ms'}: {m.value:.3f}" + (COARSE if m.method == METHOD_SYSDATETIME else "")
+            lines = [f"{m.label or 'server_ms'}: {m.value:.3f}" + (COARSE if m.coarse else "")
                      for m in ms]
-            return "\n".join(lines), best.value
+            return "\n".join(lines), best
         sql_text, sql_best = cell("sqlserver")
         redis_text, redis_best = cell("redis")
         verdict = "-"
-        coarse = any(m.method == METHOD_SYSDATETIME for m in by_dbms.get("sqlserver", []))
-        if coarse:
-            verdict = "[yellow]chưa so được: SQL Server đo bằng SYSDATETIME (~1 ms)[/]"
-        elif sql_best and redis_best:
-            faster, ratio = ("Redis", sql_best / redis_best) if redis_best < sql_best else ("SQL Server", redis_best / sql_best)
-            verdict = f"{faster} ×{ratio:.1f} (biến thể tốt nhất)"
+        if sql_best and redis_best:
+            # A difference smaller than what the two timing methods can resolve is not a result.
+            noise = (sql_best.resolution_ms or 0) + (redis_best.resolution_ms or 0)
+            if abs(sql_best.value - redis_best.value) <= noise:
+                verdict = "[yellow]ngang nhau trong sai số đo[/]"
+            else:
+                slow, fast = sorted((sql_best, redis_best), key=lambda m: -m.value)
+                winner = "Redis" if fast is redis_best else "SQL Server"
+                verdict = f"{winner} ×{slow.value / max(fast.value, 1e-9):.1f} (biến thể tốt nhất)"
         table.add_row(f"{key}\n[dim]{titles[key]}[/]", sql_text, redis_text, verdict)
     return table
 
 
 def coarse_timing_used(result: RunResult) -> bool:
-    return any(m.method == METHOD_SYSDATETIME for t in result.topics for s in t.scenarios for m in s.metrics)
+    return any(m.coarse for t in result.topics for s in t.scenarios for m in s.metrics)
 
 
 def status_counts(result: RunResult) -> dict[str, int]:
