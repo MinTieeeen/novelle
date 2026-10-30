@@ -2,7 +2,20 @@
 
 Chạy các thí nghiệm theo topic của bài tập lớn trên **SQL Server (AWS RDS)** và **Redis**, đo kết quả và so sánh hai DBMS.
 
-Trạng thái: **phase F3**. Đã có `config`, `check`, `list`, `run`, `scaffold`, `clean` và topic mẫu `topics/t0_example`. Lệnh `report` (HTML, nhận xét Gemini) sẽ có ở phase F4 và F5.
+Trạng thái: **phase F4**. Đã có `config`, `check`, `list`, `run`, `scaffold`, `clean`, `report` (HTML) và topic mẫu `topics/t0_example`. Nhận xét bằng Gemini trong report sẽ có ở phase F5.
+
+## Report HTML
+
+```bash
+uv run lab report                          # report của lần chạy mới nhất -> reports/<runId>.html
+uv run lab report 20261030-175654-example-local
+uv run lab report --latest-per-topic --target aws --out reports/team.html   # report chung của nhóm
+```
+
+- Mỗi report là **một file HTML duy nhất**: CSS, JS và biểu đồ SVG đều được nhúng sẵn, nên mở được offline và đính kèm vào file ZIP nộp bài. In ra PDF được (khi in, các phần thu gọn tự mở ra).
+- `--latest-per-topic` gộp **kết quả mới nhất của từng scenario** qua mọi lần chạy, nên mỗi thành viên chạy topic của mình riêng mà vẫn ra một report chung. Một lần chạy bị `skipped` không che kết quả thật trước đó, và topic đã bị xoá khỏi `topics/` sẽ bị bỏ qua. Nên luôn kèm `--target` để không trộn số đo Redis local với aws.
+- Nội dung: tổng quan (số scenario đạt / lỗi), môi trường và cách đo, bảng tổng hợp mọi cặp; rồi với từng topic: câu hỏi nghiên cứu, chỗ dành cho nhận xét AI, từng cặp gồm biểu đồ `server_ms` (thanh là p50, vạch kéo tới p95, rê chuột hoặc Tab để xem chi tiết), bảng số liệu, metric so sánh, check, nhận xét, plan và các bằng chứng khác, cuối cùng là `NOTES.md`.
+- Có sẵn dark mode (theo hệ điều hành, hoặc bấm nút "Giao diện").
 
 ## Bắt đầu topic của bạn
 
@@ -108,8 +121,11 @@ lab/checks.py        các hạng mục của `lab check`
 lab/cli.py           Typer CLI
 lab/views.py         bảng Rich cho list/run
 lab/maintenance.py   scaffold và clean
+lab/report/          loader.py (đọc và gộp run.json), builder.py (dựng HTML), charts.py (SVG),
+                     templates/ (Jinja2), static/ (CSS, JS được nhúng vào file report)
 lab/framework/       scenario.py (@scenario, Ctx), bench.py (đo phía server), registry.py (tự tìm topic),
                      runner.py (chạy, bắt lỗi, dọn dữ liệu, ghi run.json), result.py (model pydantic),
+                     compare.py (ghép cặp và kết luận, dùng chung cho terminal và report),
                      sqlserver_probe.py, redis_probe.py, concurrency.py, fixtures.py
 topics/_template/    mẫu cho `lab scaffold`
 topics/t0_example/   topic mẫu: 3 cặp (đọc theo khoá, top rating, đếm lượt xem đồng thời)

@@ -1,11 +1,13 @@
 """Command line entry point: `uv run lab <command>`.
 
-Commands:          config, check (F1), list, run (F2), scaffold, clean (F3)
-Later phases add:  report (F4-F5)
+Commands:          config, check (F1), list, run (F2), scaffold, clean (F3), report (F4)
+Later phases add:  AI commentary in the report (F5)
 """
 from __future__ import annotations
 
+import webbrowser
 from enum import Enum
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -183,6 +185,35 @@ def clean(topic: str = typer.Argument(..., help="id topic, hoặc 'all' để xo
         console.print(f"[bold red]{err}[/]")
     if r.errors:
         raise typer.Exit(1)
+
+
+@app.command()
+def report(run_id: str = typer.Argument("latest", help="runId trong results/, hoặc 'latest'."),
+           latest_per_topic: bool = typer.Option(False, "--latest-per-topic", "-a",
+                                                 help="Gộp kết quả mới nhất của mọi scenario, mọi topic "
+                                                      "thành một report (dùng cho báo cáo chung của nhóm)."),
+           target: str | None = typer.Option(None, "--target", "-t",
+                                             help="Khi gộp: chỉ lấy các lần chạy với Redis target này."),
+           out: Path | None = typer.Option(None, "--out", "-o", help="Đường dẫn file HTML (mặc định reports/)."),
+           open_: bool = typer.Option(False, "--open", help="Mở report bằng trình duyệt sau khi tạo.")) -> None:
+    """Tạo report HTML (một file, mở offline) từ kết quả trong results/."""
+    from lab.report import builder, loader   # imported here so `lab run` does not load Jinja/markdown
+
+    try:
+        if latest_per_topic:
+            existing = {t.meta.id for t in _discover()}      # skip results of topics deleted since
+            loaded = loader.load_latest_per_scenario(target=target, topics_filter=existing)
+        else:
+            loaded = loader.load(run_id)
+    except FileNotFoundError as exc:
+        console.print(f"[bold red]Không tìm thấy kết quả:[/] {exc}")
+        raise typer.Exit(1)
+    path = builder.build(loaded, out)
+    n = sum(len(t.scenarios) for t in loaded.result.topics)
+    console.print(f"[green]Đã tạo report[/] ({len(loaded.result.topics)} topic, {n} scenario, "
+                  f"từ {len(loaded.sources)} lần chạy): [cyan]{path.as_posix()}[/]")
+    if open_:
+        webbrowser.open(path.resolve().as_uri())
 
 
 if __name__ == "__main__":

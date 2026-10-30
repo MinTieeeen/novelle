@@ -146,6 +146,11 @@ def run_scenario(s: ScenarioDef, conns: Connections, cfg: LabConfig, options: Ru
                 observations=ctx.observations, artifacts=ctx.artifacts)
 
 
+def _read_notes(folder: Path) -> str:
+    notes = folder / "NOTES.md"
+    return notes.read_text(encoding="utf-8") if notes.is_file() else ""
+
+
 def cleanup_topic(topic: str, conns: Connections) -> None:
     """Drop what the topic's scenarios left behind. Failures are ignored: `lab clean` can retry."""
     if (redis := conns.opened("redis")) is not None:
@@ -175,7 +180,8 @@ def run(topics: list[Topic], cfg: LabConfig, options: RunOptions | None = None,
         for topic in topics:
             topic_result = TopicResult(topic=TopicInfo(
                 id=topic.meta.id, title=topic.meta.title, owner=topic.meta.owner,
-                research_questions=list(topic.meta.research_questions), context=topic.meta.context))
+                research_questions=list(topic.meta.research_questions), context=topic.meta.context,
+                folder=topic.folder.name, notes_md=_read_notes(topic.folder)))
             for s in topic.scenarios:
                 if listener:
                     listener.scenario_started(s)

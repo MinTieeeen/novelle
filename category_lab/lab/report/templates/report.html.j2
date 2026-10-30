@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Novelle DBMS Lab</title>
+<style>{{ css }}</style>
+</head>
+<body class="viz-root">
+<header class="page-head">
+  <div>
+    <p class="eyebrow">Báo cáo thí nghiệm · SQL Server và Redis</p>
+    <h1>Novelle DBMS Lab</h1>
+    <p class="meta">
+      {{ run.run_id }} · tạo lúc {{ generated_at.strftime("%d/%m/%Y %H:%M") }}
+      {% if sources|length > 1 %} · gộp từ {{ sources|length }} lần chạy{% endif %}
+    </p>
+  </div>
+  <button class="theme-toggle" type="button" aria-label="Đổi giao diện sáng/tối">◐ Giao diện</button>
+</header>
+
+<main>
+<section class="tiles" aria-label="Tổng quan">
+  <div class="tile"><span class="tile-label">Topic</span><span class="tile-value">{{ topics|length }}</span></div>
+  <div class="tile"><span class="tile-label">Scenario</span><span class="tile-value">{{ counts.values()|sum }}</span></div>
+  <div class="tile"><span class="tile-label"><span class="st good">✔</span> Đạt</span><span class="tile-value">{{ counts.get("passed", 0) }}</span></div>
+  <div class="tile"><span class="tile-label"><span class="st critical">✘</span> Không đạt / lỗi</span><span class="tile-value">{{ counts.get("failed", 0) + counts.get("error", 0) }}</span></div>
+  <div class="tile"><span class="tile-label"><span class="st muted">–</span> Bỏ qua</span><span class="tile-value">{{ counts.get("skipped", 0) }}</span></div>
+</section>
+
+<section class="card">
+  <h2>Môi trường</h2>
+  <table class="kv">
+    <tr><th>SQL Server</th><td>{{ env.sqlserver_version or "?" }} · {{ env.sqlserver_edition or "?" }} · AWS RDS, database {{ env.sql_database }}</td></tr>
+    <tr><th>Redis</th><td>{{ env.redis_version or "?" }} · target <b>{{ env.target }}</b>{% if env.target == "local" %} (Docker trên máy chạy lab){% else %} (EC2 qua tunnel SSM){% endif %}</td></tr>
+    <tr><th>Cách đo thời gian</th><td>Chỉ thời gian xử lý <b>phía server</b>, không gồm mạng. SQL Server: câu lệnh chạy K lần trong một batch giữa hai lần đọc <code>SYSDATETIME()</code>, chia K. Redis: tổng <code>duration</code> trong <code>SLOWLOG</code>. Dấu * nghĩa là độ phân giải của phép đo lớn hơn 10% giá trị.</td></tr>
+    {% if sources|length > 1 %}<tr><th>Các lần chạy</th><td>{{ sources|join(", ") }}</td></tr>{% endif %}
+  </table>
+</section>
+
+{% if summary %}
+<section class="card">
+  <h2>Tổng hợp các cặp so sánh</h2>
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>Topic</th><th>Cặp</th><th class="num">SQL Server (p50)</th><th class="num">Redis (p50)</th><th>Kết luận</th></tr></thead>
+    <tbody>
+    {% for r in summary %}
+      <tr>
+        <td><a href="#topic-{{ r.topic.id }}">{{ r.topic.title }}</a></td>
+        <td><a href="#pair-{{ r.topic.id }}-{{ r.pair.key }}">{{ r.pair.title }}</a></td>
+        <td class="num">{% if r.sql %}{{ r.sql.value|ms }}{% if r.sql.coarse %}*{% endif %}{% else %}–{% endif %}</td>
+        <td class="num">{% if r.redis %}{{ r.redis.value|ms }}{% if r.redis.coarse %}*{% endif %}{% else %}–{% endif %}</td>
+        <td>
+          {% if r.verdict %}{{ r.verdict.text }}{% elif r.shared %}{{ r.shared|length }} metric so sánh, xem chi tiết{% else %}–{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+<nav class="card toc" aria-label="Mục lục">
+  <h2>Topic</h2>
+  <ol>{% for tv in topics %}<li><a href="#topic-{{ tv.t.topic.id }}">{{ tv.t.topic.title }}</a> <span class="muted">· {{ tv.t.topic.owner }}</span></li>{% endfor %}</ol>
+</nav>
+
+{% for tv in topics %}
+{% set topic = tv.t.topic %}
+<section class="topic" id="topic-{{ topic.id }}">
+  <header class="topic-head">
+    <h2>{{ topic.title }}</h2>
+    <p class="meta">Người thực hiện: <b>{{ topic.owner }}</b> · <code>topics/{{ topic.folder or topic.id }}</code></p>
+  </header>
+  {% if topic.research_questions %}
+  <div class="card">
+    <h3>Câu hỏi nghiên cứu</h3>
+    <ol>{% for q in topic.research_questions %}<li>{{ q }}</li>{% endfor %}</ol>
+    {% if topic.context %}<p class="muted">{{ topic.context }}</p>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="card ai">
+    <h3>Nhận xét AI <span class="badge">Gemini</span></h3>
+    {% if tv.commentary %}
+      {% set c = tv.commentary %}
+      <p class="ai-note">Nội dung do AI sinh từ số liệu bên dưới, cần đối chiếu với nhận xét của thành viên.</p>
+      <p>{{ c.summary }}</p>
+      <div class="cols">
+        <div><h4>SQL Server</h4><p>{{ c.sqlserver }}</p></div>
+        <div><h4>Redis</h4><p>{{ c.redis }}</p></div>
+      </div>
+      <h4>So sánh</h4><p>{{ c.comparison }}</p>
+      <h4>Khuyến nghị cho Novelle</h4><p>{{ c.recommendation }}</p>
+      {% if c.caveats %}<h4>Lưu ý về phép đo</h4><ul>{% for x in c.caveats %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+    {% else %}
+      <p class="muted">Chưa có nhận xét AI cho topic này{% if not commentary_enabled %} (report được tạo không kèm Gemini){% endif %}.</p>
+    {% endif %}
+  </div>
+
+  {% for pv in tv.pairs %}
+  {% set p = pv.pair %}
+  <article class="card pair" id="pair-{{ topic.id }}-{{ p.key }}">
+    <header class="pair-head">
+      <h3>{{ p.title }}</h3>
+      <span class="pair-key"><code>{{ p.key }}</code></span>
+    </header>
+
+    {% if pv.timing_rows %}
+    <div class="figure">
+      <div class="legend" aria-hidden="true">
+        <span><i class="sw s1"></i>SQL Server</span><span><i class="sw s2"></i>Redis</span>
+        <span class="muted">thanh = p50 · vạch = tới p95</span>
+      </div>
+      {{ pv.chart }}
+      {% if p.timing_verdict %}<p class="verdict"><b>{{ p.timing_verdict.text }}</b> <span class="muted">(so biến thể tốt nhất mỗi bên)</span></p>{% endif %}
+    </div>
+    <details class="table-view">
+      <summary>Bảng số liệu thời gian</summary>
+      <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>DBMS</th><th>Biến thể</th><th class="num">p50</th><th class="num">p95</th><th class="num">min</th><th class="num">max</th><th class="num">n</th><th class="num">Độ phân giải</th><th>Cách đo</th></tr></thead>
+        <tbody>
+        {% for dbms, m in pv.timing_rows %}
+          <tr><td><i class="sw {{ 's1' if dbms == 'sqlserver' else 's2' }}"></i>{{ dbms_name[dbms] }}</td><td>{{ m.label }}</td>
+            <td class="num">{{ m.stats.p50|ms }}{% if m.coarse %}*{% endif %}</td><td class="num">{{ m.stats.p95|ms }}</td>
+            <td class="num">{{ m.stats.min|ms }}</td><td class="num">{{ m.stats.max|ms }}</td><td class="num">{{ m.stats.count }}</td>
+            <td class="num">{{ (m.resolution_ms|ms) if m.resolution_ms else "–" }}</td><td class="small">{{ m.note }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </details>
+    {% endif %}
+
+    {% if p.shared %}
+    <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Metric</th><th class="num">SQL Server</th><th class="num">Redis</th><th>Kết luận</th></tr></thead>
+      <tbody>
+      {% for r in p.shared %}
+        <tr><td>{{ r.name }} · {{ r.label }}</td><td class="num">{{ r.sql|value }}</td><td class="num">{{ r.redis|value }}</td><td>{{ r.verdict.text }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+
+    <div class="cols">
+      {% for sv, dbms in [(pv.sql, "sqlserver"), (pv.redis, "redis")] %}
+      <div class="side">
+        <h4><i class="sw {{ 's1' if dbms == 'sqlserver' else 's2' }}"></i>{{ dbms_name[dbms] }}</h4>
+        {% if sv %}{% include "_scenario.html.j2" %}{% else %}<p class="muted">Chưa có scenario cho DBMS này.</p>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </article>
+  {% endfor %}
+
+  {% if tv.unpaired %}
+  <div class="card">
+    <h3>Scenario không ghép cặp</h3>
+    {% for sv in tv.unpaired %}
+      <div class="side solo"><h4><i class="sw {{ 's1' if sv.s.dbms == 'sqlserver' else 's2' }}"></i>{{ dbms_name[sv.s.dbms] }} · {{ sv.s.title }}</h4>{% include "_scenario.html.j2" %}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if tv.notes_html %}
+  <div class="card notes">
+    <h3>Ghi chú của thành viên <span class="muted">(NOTES.md)</span></h3>
+    {{ tv.notes_html }}
+  </div>
+  {% endif %}
+</section>
+{% endfor %}
+</main>
+
+<footer class="page-foot">
+  Novelle DBMS Lab · <code>uv run lab report</code> · số liệu gốc trong <code>results/</code>
+</footer>
+<div class="tooltip" role="tooltip" hidden></div>
+<script>{{ js }}</script>
+</body>
+</html>

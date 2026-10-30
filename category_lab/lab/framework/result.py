@@ -82,6 +82,8 @@ class TopicInfo(BaseModel):
     owner: str
     research_questions: list[str] = Field(default_factory=list)
     context: str = ""
+    folder: str = ""
+    notes_md: str = ""               # topics/<folder>/NOTES.md at run time
 
 
 class TopicResult(BaseModel):
