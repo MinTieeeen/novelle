@@ -38,6 +38,8 @@ Biến môi trường container nhận được:
 | `LAB_LOCAL_REDIS_HOST/PORT` | `redis` / `6379` | compose |
 | `LAB_AWS_REDIS_HOST/PORT` | `host.docker.internal` / `16379` | compose. Cần mở tunnel SSM trên máy host trước (`novelle_backend/scripts/aws-tunnel.*`) |
 
+**Lưu ý với PowerShell 5.1:** khi truyền chuỗi cho `docker`, PowerShell xoá các dấu `"` nằm bên trong chuỗi `'...'`. Vì thế các lệnh dạng `sh -c '... "..." ...'` bên dưới chỉ chạy đúng trong Git Bash hoặc WSL. Trong PowerShell, hãy mở shell trong container (`docker compose --profile lab run --rm lab bash`) rồi gõ lệnh ở đó, hoặc viết mỗi dấu `"` bên trong thành `\"`.
+
 Kiểm tra nhanh kết nối RDS từ container (Git Bash cần `MSYS_NO_PATHCONV=1`):
 
 ```bash

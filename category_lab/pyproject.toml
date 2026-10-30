@@ -1,0 +1,29 @@
+[project]
+name = "novelle-category-lab"
+version = "0.1.0"
+description = "DBMS Lab for Novelle: runs per-topic scenarios on SQL Server (AWS RDS) and Redis, compares the results"
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.16",
+    "rich>=14.0",
+    "pyodbc>=5.2",
+    "redis>=6.2",
+    "python-dotenv>=1.1",
+    "pydantic>=2.11",
+]
+
+[project.scripts]
+lab = "lab.cli:app"
+
+[dependency-groups]
+dev = ["pytest>=8.4"]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["lab"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

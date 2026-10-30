@@ -11,7 +11,8 @@
  *
  * | Login             | Rights                                                         | Used by                   |
  * |-------------------|----------------------------------------------------------------|---------------------------|
- * | novelle_migrator  | db_owner                                                       | schema scripts, seeder    |
+ * | novelle_migrator  | db_owner + VIEW SERVER STATE (server level)                    | schema scripts, seeder,   |
+ * |                   |                                                                | DBMS Lab (category_lab)   |
  * | novelle_app       | db_datareader, db_datawriter, EXECUTE on schema dbo            | the backend               |
  * | novelle_readonly  | db_datareader, SHOWPLAN, VIEW DATABASE STATE                   | team members, demos       |
  *
@@ -32,6 +33,11 @@ IF SUSER_ID(N'novelle_app') IS NULL
 GO
 IF SUSER_ID(N'novelle_readonly') IS NULL
     EXEC (N'CREATE LOGIN [novelle_readonly] WITH PASSWORD = N''$(RO_PASSWORD)'', CHECK_POLICY = ON');
+GO
+
+-- The DBMS Lab reads sys.dm_exec_query_stats for server-side timings (µs). RDS lets the master
+-- user grant this permission (it holds VIEW SERVER STATE WITH GRANT OPTION).
+GRANT VIEW SERVER STATE TO [novelle_migrator];
 GO
 
 USE NovelleDB;
