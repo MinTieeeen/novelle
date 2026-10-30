@@ -1,0 +1,62 @@
+# Local environment for Novelle. 
+# (credentials in novelle_backend/.env). This file only provides:
+#   redis  Redis Stack (RediSearch + RedisJSON + RedisInsight), configured like the Redis on EC2
+#   lab    Python image for category_lab (ODBC Driver 18, sqlcmd, redis-cli, uv), started on demand
+#
+#   docker compose up -d                                     start redis
+#   docker compose --profile lab run --rm lab <command>      run a command in the lab image
+# See docker/README.md.
+name: novelle
+
+services:
+  redis:
+    image: redis/redis-stack:7.4.0-v3
+    environment:
+      # Same persistence as the Redis on EC2: AOF fsync every second (+ default RDB snapshots).
+      REDIS_ARGS: "--appendonly yes --appendfsync everysec"
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_INSIGHT_PORT:-8001}:8001"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  lab:
+    profiles: [lab]
+    build:
+      context: docker/lab
+    image: novelle-lab:latest
+    working_dir: /workspace/category_lab
+    env_file:
+      - path: novelle_backend/.env        # DB_HOST and the RDS passwords
+        required: true
+      - path: category_lab/.env           # GEMINI_API_KEY etc. (created in lab phase F1)
+        required: false
+    environment:
+      LAB_LOCAL_REDIS_HOST: redis
+      LAB_LOCAL_REDIS_PORT: "6379"
+      # The SSM tunnel to the Redis on EC2 runs on the host (scripts/aws-tunnel.*), port 16379.
+      LAB_AWS_REDIS_HOST: host.docker.internal
+      LAB_AWS_REDIS_PORT: "16379"
+      UV_PROJECT_ENVIRONMENT: /opt/venv   # keep the Linux venv out of the Windows working tree
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./:/workspace
+      - lab-venv:/opt/venv
+      - uv-cache:/root/.cache/uv
+    depends_on:
+      redis:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+
+volumes:
+  redis-data:
+  lab-venv:
+  uv-cache:
