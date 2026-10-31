@@ -12,15 +12,9 @@ uv run lab report 20261030-175654-example-local
 uv run lab report --latest-per-topic --target aws --out reports/team.html   # report chung của nhóm
 ```
 
-- Mỗi report là **một file HTML duy nhất**: CSS, JS và biểu đồ SVG đều được nhúng sẵn, nên mở được offline và đính kèm vào file ZIP nộp bài. In ra PDF được (khi in, các phần thu gọn tự mở ra).
-- `--latest-per-topic` gộp **kết quả mới nhất của từng scenario** qua mọi lần chạy, nên mỗi thành viên chạy topic của mình riêng mà vẫn ra một report chung. Một lần chạy bị `skipped` không che kết quả thật trước đó, và topic đã bị xoá khỏi `topics/` sẽ bị bỏ qua. Nên luôn kèm `--target` để không trộn số đo Redis local với aws.
-- Nội dung: tổng quan (số scenario đạt / lỗi), môi trường và cách đo, bảng tổng hợp mọi cặp; rồi với từng topic: câu hỏi nghiên cứu, chỗ dành cho nhận xét AI, từng cặp gồm biểu đồ `server_ms` (thanh là p50, vạch kéo tới p95, rê chuột hoặc Tab để xem chi tiết), bảng số liệu, metric so sánh, check, nhận xét, plan và các bằng chứng khác, cuối cùng là `NOTES.md`.
-- **Nhận xét AI (Gemini)**: mỗi topic gọi Gemini **một lần**. Nhận xét riêng của từng scenario nằm trong tab SQL Server / Redis của cặp; nhận xét so sánh hai DBMS (trả lời câu hỏi nghiên cứu, khuyến nghị cho Novelle, lưu ý về phép đo) nằm cuối mỗi topic.
-  - Cần `GEMINI_API_KEY` trong `category_lab/.env`; `lab check` gọi thử và cho biết model nào đang dùng được. Model chính là `GEMINI_MODEL` (mặc định `gemini-3.8-flash`), sau đó lần lượt tới `GEMINI_FALLBACK_MODELS` (mặc định 3.7, 3.6, 3.5 rồi `gemini-flash-latest`). Quota free tier tính **riêng cho từng model**: model **hết quota (429)** hoặc **không còn cấp cho key (404)** được bỏ qua ngay và không được hỏi lại trong lần chạy đó. Model **quá tải (5xx)** được thử lại theo `GEMINI_RETRY_DELAYS_S` rồi mới chuyển. Nếu mọi model đều lỗi, report dùng nhận xét lần trước (có ghi chú) hoặc ghi rõ lỗi, report vẫn được tạo.
-  - Kết quả được cache trong `results/.llm-cache/`. Tạo lại report khi số liệu không đổi thì không tốn request. `--refresh-llm` hỏi lại, `--no-llm` bỏ hẳn phần AI.
-  - Prompt nằm ở [`lab/llm/prompts/commentary.md`](lab/llm/prompts/commentary.md), sửa trực tiếp file đó (sửa xong, lần chạy sau tự hỏi lại vì cache key gồm cả prompt).
-  - Chỉ số liệu, câu lệnh, nhận xét và tóm tắt plan được gửi đi; không gửi host, user, mật khẩu. Nhận xét AI cần đối chiếu với nhận xét của thành viên trước khi đưa vào báo cáo.
-- Có sẵn dark mode (theo hệ điều hành, hoặc bấm nút "Giao diện").
+![alt text](image.png)
+
+![alt text](image-1.png)
 
 ## Bắt đầu topic của bạn
 
