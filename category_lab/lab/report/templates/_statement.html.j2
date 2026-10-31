@@ -1,0 +1,9 @@
+{# One statement of a scenario (Statement model). Expects `st`. #}
+<div class="stmt">
+  <div class="stmt-head">
+    <span class="stmt-label">{{ st.label }}</span>
+    {% if st.note %}<span class="muted small">{{ st.note }}</span>{% endif %}
+    <button type="button" class="copy" aria-label="Sao chép câu lệnh {{ st.label }}">Sao chép</button>
+  </div>
+  <pre><code class="lang-{{ st.lang }}">{{ st.text }}</code></pre>
+</div>

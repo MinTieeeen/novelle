@@ -62,7 +62,6 @@ novelle_backend/
 ├─ pom.xml
 ├─ mvnw, mvnw.cmd                    Maven wrapper
 ├─ docker-compose.yml                Local SQL Server 2019 + Redis Stack
-├─ .env.example                      Environment variable template (copy to .env, never commit .env)
 ├─ database/
 │  ├─ bootstrap/                     Run once with an admin login
 │  │  ├─ 00_create_database.sql      CREATE DATABASE NovelleDB COLLATE Vietnamese_100_CI_AI
@@ -177,7 +176,7 @@ studio/
 
 ### 4.2 Environment variables
 
-Copy `.env.example` to `.env` and fill in values. Secrets are read only from environment variables and are never written to `application*.yml`.
+All settings of the project live in ONE file, `novelle/.env` (template: `novelle/.env.example`, shared with docker compose and category_lab). Copy the template to `novelle/.env` and fill in values. Secrets are read only from environment variables and are never written to `application*.yml`.
 
 | Variable | Example | Used by |
 |---|---|---|
@@ -225,7 +224,7 @@ The schema is managed by the SQL scripts in `database/` only. The application ne
 
 ```bash
 # 1. Start SQL Server 2019 and Redis Stack
-cp .env.example .env            # then edit .env
+cp ../.env.example ../.env      # then edit novelle/.env (the single settings file)
 docker compose up -d
 
 # 2. Create the database and logins, then the schema (once)
