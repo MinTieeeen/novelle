@@ -31,6 +31,8 @@ SERIES_VAR = {"sqlserver": "var(--series-1)", "redis": "var(--series-2)"}
 
 def fmt_ms(v: float) -> str:
     """Times read best in µs below 1 ms: 0.0029 -> '2.9 µs', 0.377 -> '377 µs', 12.3 -> '12.30 ms'."""
+    if v == 0:
+        return "0 ms"
     if v < 0.01:
         return f"{v * 1000:.1f} µs"
     if v < 1:

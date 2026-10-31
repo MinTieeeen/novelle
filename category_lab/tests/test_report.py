@@ -108,6 +108,13 @@ def test_pair_has_sql_and_redis_tabs_with_statements(tmp_path: Path):
     assert "không ghi lại câu lệnh" in html                                       # pair b, Redis side
     assert '<span class="pair-key">' not in html
 
+    # Each tab holds the full detail of its side: status, statements, timing table, checks, notes.
+    panel = html[html.index('id="pair-demo-a-code-redis"'):html.index('id="pair-demo-b-code-sqlserver"')]
+    for part in ("Đạt", "Câu lệnh đã chạy", "HGETALL lab:demo:story:1", "Thời gian xử lý phía server",
+                 "hgetall", "Kiểm chứng", "Nhận xét của thành viên", "demo.redis.a"):
+        assert part in panel, part
+    assert "pk_seek" not in panel                                                    # SQL Server side stays out
+
 
 def test_latest_per_scenario_merges_runs(tmp_path: Path):
     results = tmp_path / "results"

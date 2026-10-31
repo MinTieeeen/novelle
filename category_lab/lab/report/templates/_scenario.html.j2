@@ -1,32 +1,90 @@
-{# One scenario: status, checks, member notes, other metrics, evidence. Expects `sv` (ScenarioView). #}
+{# Everything about one scenario, shown in its DBMS tab: status, statements, server-side timings,
+   checks, member notes, other metrics, plans and other evidence. Expects `sv` (ScenarioView). #}
 {% set s = sv.s %}
-<p class="status"><span class="st {{ sv.status_class }}">{{ sv.status_icon }}</span> {{ sv.status_label }}
-  <span class="muted">· <code>{{ s.id }}</code> · {{ "%.1f"|format(s.duration_s) }} s</span></p>
+<div class="detail">
+<p class="status"><span class="st {{ sv.status_class }}">{{ sv.status_icon }}</span> <b>{{ sv.status_label }}</b>
+  <span class="muted">· {{ s.title }} · <code>{{ s.id }}</code> · chạy {{ "%.1f"|format(s.duration_s) }} s</span></p>
 {% if s.skip_reason %}<p class="muted">{{ s.skip_reason }}</p>{% endif %}
 {% if s.description %}<p class="small">{{ s.description }}</p>{% endif %}
+{% if sv.ai_comment %}
+<div class="ai-comment">
+  <span class="badge">AI · Gemini</span>
+  <p>{{ sv.ai_comment }}</p>
+</div>
+{% endif %}
+{% if s.error %}<details open class="error"><summary>Lỗi</summary><pre>{{ s.error }}</pre></details>{% endif %}
+
+<section class="detail-sec">
+  <h5>Câu lệnh đã chạy</h5>
+  {% if s.statements %}
+    {% for st in s.statements %}{% include "_statement.html.j2" %}{% endfor %}
+  {% else %}
+    <p class="muted small">Lần chạy này không ghi lại câu lệnh nào. Chạy lại <code>lab run {{ s.topic }}</code>, hoặc gọi <code>ctx.statement(label, text)</code> cho đoạn code không đi qua bench.</p>
+  {% endif %}
+</section>
+
+{% if sv.timings %}
+<section class="detail-sec">
+  <h5>Thời gian xử lý phía server</h5>
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>Biến thể</th><th class="num">p50</th><th class="num">p95</th><th class="num">min</th><th class="num">max</th><th class="num">mean</th><th class="num">n</th><th class="num">Độ phân giải</th></tr></thead>
+    <tbody>
+    {% for m in sv.timings %}
+      <tr><td>{{ m.label or "server_ms" }}</td>
+        <td class="num">{{ m.stats.p50|ms }}{% if m.coarse %}*{% endif %}</td><td class="num">{{ m.stats.p95|ms }}</td>
+        <td class="num">{{ m.stats.min|ms }}</td><td class="num">{{ m.stats.max|ms }}</td><td class="num">{{ m.stats.mean|ms }}</td>
+        <td class="num">{{ m.stats.count }}</td><td class="num">{{ (m.resolution_ms|ms) if m.resolution_ms else "–" }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% for note in sv.timings|map(attribute="note")|unique %}<p class="small">Cách đo: {{ note }}</p>{% endfor %}
+</section>
+{% endif %}
 
 {% if s.checks %}
-<ul class="checks">
-  {% for c in s.checks %}<li><span class="st {{ 'good' if c.passed else 'critical' }}">{{ '✔' if c.passed else '✘' }}</span> {{ c.message }}</li>{% endfor %}
-</ul>
+<section class="detail-sec">
+  <h5>Kiểm chứng</h5>
+  <ul class="checks">
+    {% for c in s.checks %}<li><span class="st {{ 'good' if c.passed else 'critical' }}">{{ '✔' if c.passed else '✘' }}</span> {{ c.message }}</li>{% endfor %}
+  </ul>
+</section>
 {% endif %}
 
 {% if s.observations %}
-<div class="observe">{% for o in s.observations %}<p>{{ o }}</p>{% endfor %}</div>
+<section class="detail-sec">
+  <h5>Nhận xét của thành viên</h5>
+  <div class="observe">{% for o in s.observations %}<p>{{ o }}</p>{% endfor %}</div>
+</section>
 {% endif %}
 
 {% if sv.extra_metrics %}
-<table class="data compact">
-  {% for m in sv.extra_metrics %}<tr><td>{{ m.name }}{% if m.label %} · {{ m.label }}{% endif %}</td><td class="num">{{ m|value }}</td></tr>{% endfor %}
-</table>
+<section class="detail-sec">
+  <h5>Số đo khác</h5>
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>Metric</th><th>Biến thể</th><th class="num">Giá trị</th><th>Ghi chú</th></tr></thead>
+    <tbody>
+    {% for m in sv.extra_metrics %}
+      <tr><td>{{ m.name }}</td><td>{{ m.label or "–" }}</td><td class="num">{{ m|value }}{% if m.coarse %}*{% endif %}</td><td class="small">{{ m.note }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
 {% endif %}
 
-{% if s.error %}<details open class="error"><summary>Lỗi</summary><pre>{{ s.error }}</pre></details>{% endif %}
-
-{% for a in sv.artifacts %}
-  {% if a.text is not none %}
-  <details class="artifact"><summary>{{ a.label }} <span class="muted">({{ a.kind }})</span></summary><pre>{{ a.text }}</pre></details>
-  {% else %}
-  <p class="artifact-link"><a href="{{ a.href }}">{{ a.label }}</a> <span class="muted">({{ a.kind }}{% if a.kind == "sqlplan" %}, mở bằng SSMS{% endif %})</span></p>
-  {% endif %}
-{% endfor %}
+{% if sv.artifacts %}
+<section class="detail-sec">
+  <h5>Execution plan và bằng chứng</h5>
+  {% for a in sv.artifacts %}
+    {% if a.text is not none %}
+    <details class="artifact"><summary>{{ a.label }} <span class="muted">({{ a.kind }})</span></summary><pre>{{ a.text }}</pre></details>
+    {% else %}
+    <p class="artifact-link"><a href="{{ a.href }}">{{ a.label }}</a> <span class="muted">({{ a.kind }}{% if a.kind == "sqlplan" %}, mở bằng SSMS{% endif %})</span></p>
+    {% endif %}
+  {% endfor %}
+</section>
+{% endif %}
+</div>

@@ -1,0 +1,141 @@
+import json
+from pathlib import Path
+
+from lab.framework.result import Environment, Statement
+from lab.report import builder, gemini, loader
+from test_report import T0, run, save, scenario, timing
+
+ANSWER = {
+    "scenarios": [{"scenario_id": "demo.sqlserver.a", "comment": "SQL Server dùng clustered index seek, 50 µs."},
+                  {"scenario_id": "demo.redis.a", "comment": "Redis HGETALL chỉ 3 µs vì dữ liệu nằm trong RAM."},
+                  {"scenario_id": "not.a.scenario", "comment": "bị bỏ qua"}],
+    "comparison": "Redis nhanh hơn khoảng 17 lần ở phía server.",
+    "recommendation": "Dùng Redis làm cache cho trang chi tiết truyện.",
+    "caveats": ["Chỉ 150 truyện."],
+}
+
+
+class Resp:
+    def __init__(self, text):
+        self.text = text
+
+
+class APIError(Exception):
+    def __init__(self, code):
+        super().__init__(f"HTTP {code}")
+        self.code = code
+
+
+class FakeClient:
+    def __init__(self, failures=()):
+        self.failures = list(failures)
+        self.calls = []
+        self.models = self
+
+    def generate_content(self, model, contents, config):
+        self.calls.append(contents)
+        if self.failures:
+            raise APIError(self.failures.pop(0))
+        return Resp(json.dumps(ANSWER, ensure_ascii=False))
+
+
+def make_results(tmp_path: Path) -> Path:
+    results = tmp_path / "results"
+    sql = scenario("demo.sqlserver.a", "sqlserver", "a", [timing("pk_seek", [0.05], 0.01)])
+    sql.statements = [Statement(label="pk_seek", lang="sql", text="SELECT * FROM dbo.Story WHERE StoryId = 1")]
+    red = scenario("demo.redis.a", "redis", "a", [timing("hgetall", [0.003], 0.001)])
+    skipped = scenario("demo.redis.b", "redis", "b", [], status="skipped")
+    save(results, run("r1", T0, [sql, red, skipped]))
+    return results
+
+
+def test_payload_contains_results_but_no_connection_details(tmp_path):
+    results = make_results(tmp_path)
+    loaded = loader.load("r1", results)
+    loaded.result.environment = Environment(target="local", sqlserver_version="15.0", redis_version="7.4.2",
+                                            sql_database="NovelleDB", redis_endpoint="redis:6379")
+    payload = gemini.build_payload(loaded.result.topics[0], loaded.result.environment, results)
+    text = json.dumps(payload, ensure_ascii=False)
+    assert [s["scenario_id"] for s in payload["scenarios"]] == ["demo.sqlserver.a", "demo.redis.a"]   # no skipped
+    assert "SELECT * FROM dbo.Story WHERE StoryId = 1" in text and '"p95"' in text
+    assert "redis:6379" not in text and "NovelleDB" not in text
+
+
+def test_generate_uses_cache_and_retries(tmp_path):
+    results = make_results(tmp_path)
+    loaded = loader.load("r1", results)
+    client = FakeClient(failures=[429, 503])
+    sleeps = []
+    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, api_key="k", model="m",
+                          client=client, sleep=sleeps.append)
+    c = res.commentary["demo"]
+    assert not res.errors and len(client.calls) == 3 and sleeps == [5, 15]
+    assert set(c.by_scenario) == {"demo.sqlserver.a", "demo.redis.a"} and not c.cached
+
+    again = gemini.generate(loaded.result.topics, loaded.result.environment, results, api_key="k", model="m",
+                            client=FakeClient())
+    assert again.commentary["demo"].cached and again.commentary["demo"].comparison == ANSWER["comparison"]
+
+    other_model = FakeClient()
+    gemini.generate(loaded.result.topics, loaded.result.environment, results, api_key="k", model="m2",
+                    client=other_model)
+    assert len(other_model.calls) == 1                                             # model is part of the key
+
+
+def test_errors_are_reported_per_topic(tmp_path):
+    results = make_results(tmp_path)
+    loaded = loader.load("r1", results)
+    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, api_key="k", model="m",
+                          client=FakeClient(failures=[400]), sleep=lambda s: None)
+    assert res.commentary == {} and "400" in res.errors["demo"]
+
+
+def test_report_puts_comments_in_tabs_and_comparison_at_topic_end(tmp_path):
+    results = make_results(tmp_path)
+    loaded = loader.load("r1", results)
+    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, api_key="k", model="m",
+                          client=FakeClient())
+    html = builder.render(loaded, tmp_path / "reports" / "r1.html", res.commentary)
+    redis_tab = html[html.index('id="pair-demo-a-code-redis"'):html.index('id="pair-demo-b-code-sqlserver"')]
+    assert "HGETALL chỉ 3 µs" in redis_tab and "clustered index seek" not in redis_tab
+    ai = html.index('id="ai-demo"')
+    assert ai > html.index('id="pair-demo-b"')                                     # after every pair
+    assert ANSWER["comparison"] in html[ai:] and ANSWER["recommendation"] in html[ai:]
+    assert "bị bỏ qua" not in html
+
+    no_llm = builder.render(loaded, tmp_path / "reports" / "r1.html", None, ai_note="report tạo với --no-llm")
+    assert "Chưa có nhận xét AI (report tạo với --no-llm)" in no_llm
+
+
+class PerModelClient(FakeClient):
+    """Fails with 503 for the models in `down`, answers for the others."""
+
+    def __init__(self, down):
+        super().__init__()
+        self.down, self.models_asked = set(down), []
+
+    def generate_content(self, model, contents, config):
+        self.models_asked.append(model)
+        if model in self.down:
+            raise APIError(503)
+        return Resp(json.dumps(ANSWER, ensure_ascii=False))
+
+
+def test_fallback_model_then_stale_cache(tmp_path):
+    results = make_results(tmp_path)
+    loaded = loader.load("r1", results)
+    args = dict(api_key="k", model="main", fallback_models=("backup",), sleep=lambda s: None)
+
+    client = PerModelClient(down={"main"})
+    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, client=client, **args)
+    assert res.commentary["demo"].model == "backup" and not res.errors
+    assert client.models_asked.count("main") == len(gemini.RETRY_DELAYS_S) + 1 and client.models_asked[-1] == "backup"
+
+    # results change, every model is down: the previous answer is shown, marked stale
+    loaded.result.topics[0].scenarios[0].metrics[0].value = 9.9
+    res = gemini.generate(loaded.result.topics, loaded.result.environment, results,
+                          client=PerModelClient(down={"main", "backup"}), **args)
+    c = res.commentary["demo"]
+    assert c.stale and "503" in res.errors["demo"] and c.comparison == ANSWER["comparison"]
+    html = builder.render(loaded, tmp_path / "reports" / "r1.html", res.commentary, res.errors)
+    assert "nhận xét từ lần trước" in html

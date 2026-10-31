@@ -70,6 +70,7 @@ class LabConfig:
     redis: RedisConfig
     gemini_api_key: str | None
     gemini_model: str
+    gemini_fallback_models: tuple[str, ...]
     sources: tuple[str, ...]        # .env files that were found, for `lab config`
 
 
@@ -135,7 +136,9 @@ def load_config(target: str | None = None, environ: Mapping[str, str] | None = N
         sql=sql,
         redis=redis,
         gemini_api_key=get("GEMINI_API_KEY"),
-        gemini_model=get("GEMINI_MODEL", "gemini-2.5-flash"),
+        gemini_model=get("GEMINI_MODEL", "gemini-3.8-flash"),
+        gemini_fallback_models=tuple(m.strip() for m in get("GEMINI_FALLBACK_MODELS",
+                                                             "gemini-flash-latest,gemini-3.5-flash").split(",") if m.strip()),
         sources=tuple(sources),
     )
 

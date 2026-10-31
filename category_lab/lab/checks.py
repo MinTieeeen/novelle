@@ -172,11 +172,24 @@ def check_redis(cfg: LabConfig, report: CheckReport) -> None:
 
 
 def check_llm(cfg: LabConfig, report: CheckReport) -> None:
-    # Only checks that the key is configured; the API is first called in phase F5.
-    report.results.append(CheckResult(
-        "Gemini", "API key", "PASS" if cfg.gemini_api_key else "WARN",
-        f"đã đặt, model {cfg.gemini_model}" if cfg.gemini_api_key
-        else "chưa đặt GEMINI_API_KEY (chỉ cần cho report có nhận xét AI)"))
+    """Key set, and accepted by Gemini for the configured model (models.get: no generation quota)."""
+    if not cfg.gemini_api_key:
+        report.results.append(CheckResult("Gemini", "API key", "WARN",
+                                          "chưa đặt GEMINI_API_KEY (chỉ cần cho nhận xét AI trong report)"))
+        return
+
+    def call() -> tuple[Status, str]:
+        from lab.report.gemini import check_key
+        name = check_key(cfg.gemini_api_key, cfg.gemini_model)
+        return "PASS", f"key hợp lệ, model {cfg.gemini_model} ({name})"
+
+    def safe() -> tuple[Status, str]:     # a bad key must not block the lab: WARN, not FAIL
+        try:
+            return call()
+        except Exception as exc:
+            return "WARN", f"key hoặc model không dùng được: {type(exc).__name__}: {str(exc)[:160]}"
+
+    _run(report, "Gemini", "API key", safe)
 
 
 def run_checks(cfg: LabConfig, sql: bool = True, redis: bool = True) -> CheckReport:

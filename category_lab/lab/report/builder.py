@@ -4,7 +4,8 @@ prints to PDF and can go into the submission ZIP.
     path = build(load("latest"))                  # reports/<runId>.html
     path = build(load_latest_per_scenario())      # reports/combined-<time>.html
 
-`commentary` (phase F5) maps topic id -> AI commentary; without it the report says none was generated.
+`commentary` (phase F5) maps topic id -> gemini.Commentary: per-scenario comments go into the DBMS tabs,
+the SQL Server vs Redis comparison closes the topic. `ai_note` explains a missing commentary.
 """
 from __future__ import annotations
 
@@ -47,8 +48,10 @@ class ScenarioView:
     status_icon: str
     status_label: str
     status_class: str
-    extra_metrics: list[Metric]   # everything except server_ms (shown in the chart/table)
+    extra_metrics: list[Metric]   # everything except server_ms
     artifacts: list[ArtifactView] = field(default_factory=list)
+    timings: list[Metric] = field(default_factory=list)   # server_ms variants, for the tab's timing table
+    ai_comment: str | None = None                          # Gemini's comment on this scenario
 
 
 @dataclass
@@ -67,7 +70,8 @@ class TopicView:
     unpaired: list[ScenarioView]
     notes_html: Markup
     counts: dict[str, int]
-    commentary: Any = None
+    commentary: Any = None        # gemini.Commentary of the topic
+    ai_error: str | None = None
 
 
 def _artifact(a: Artifact, results_dir: Path, report_dir: Path) -> ArtifactView:
@@ -79,28 +83,34 @@ def _artifact(a: Artifact, results_dir: Path, report_dir: Path) -> ArtifactView:
     return ArtifactView(a.label, a.kind, href, text)
 
 
-def _scenario(s: ScenarioResult | None, results_dir: Path, report_dir: Path) -> ScenarioView | None:
+def _scenario(s: ScenarioResult | None, results_dir: Path, report_dir: Path,
+              comments: dict[str, str] | None = None) -> ScenarioView | None:
     if s is None:
         return None
     icon, label, css = STATUS[s.status]
     return ScenarioView(s, icon, label, css, [m for m in s.metrics if m.name != "server_ms"],
-                        [_artifact(a, results_dir, report_dir) for a in s.artifacts])
+                        [_artifact(a, results_dir, report_dir) for a in s.artifacts],
+                        [m for m in s.metrics if m.name == "server_ms"], (comments or {}).get(s.id))
 
 
-def _topic(t: TopicResult, results_dir: Path, report_dir: Path, commentary: dict | None) -> TopicView:
+def _topic(t: TopicResult, results_dir: Path, report_dir: Path, commentary: dict | None,
+           ai_errors: dict | None) -> TopicView:
+    c = (commentary or {}).get(t.topic.id)
+    comments = c.by_scenario if c else {}
     pairs, unpaired = compare.build_pairs(t)
     views = []
     for p in pairs:
         bars = [charts.Bar("sqlserver", m) for m in p.timings("sqlserver")] + \
                [charts.Bar("redis", m) for m in p.timings("redis")]
         views.append(PairView(p, charts.timing_chart(bars, p.title), [(b.dbms, b.metric) for b in bars],
-                              _scenario(p.sql, results_dir, report_dir), _scenario(p.redis, results_dir, report_dir)))
+                              _scenario(p.sql, results_dir, report_dir, comments),
+                              _scenario(p.redis, results_dir, report_dir, comments)))
     counts: dict[str, int] = {}
     for s in t.scenarios:
         counts[s.status] = counts.get(s.status, 0) + 1
     notes = Markup(markdown.markdown(t.topic.notes_md, extensions=["tables", "fenced_code"])) if t.topic.notes_md else Markup("")
-    return TopicView(t, views, [_scenario(s, results_dir, report_dir) for s in unpaired], notes, counts,
-                     (commentary or {}).get(t.topic.id))
+    return TopicView(t, views, [_scenario(s, results_dir, report_dir, comments) for s in unpaired], notes, counts,
+                     c, (ai_errors or {}).get(t.topic.id))
 
 
 def summary_rows(topics: list[TopicView]) -> list[dict[str, Any]]:
@@ -114,13 +124,14 @@ def summary_rows(topics: list[TopicView]) -> list[dict[str, Any]]:
     return rows
 
 
-def render(loaded: LoadedReport, out: Path, commentary: dict | None = None) -> str:
+def render(loaded: LoadedReport, out: Path, commentary: dict | None = None, ai_errors: dict | None = None,
+           ai_note: str = "") -> str:
     env = Environment(loader=FileSystemLoader(HERE / "templates"), autoescape=select_autoescape(["html", "j2"]),
                       trim_blocks=True, lstrip_blocks=True)
     env.filters["ms"] = charts.fmt_ms
     env.filters["value"] = charts.fmt_value
     report_dir = out.parent
-    topics = [_topic(t, loaded.results_dir, report_dir, commentary) for t in loaded.result.topics]
+    topics = [_topic(t, loaded.results_dir, report_dir, commentary, ai_errors) for t in loaded.result.topics]
     counts: dict[str, int] = {}
     for tv in topics:
         for k, v in tv.counts.items():
@@ -128,14 +139,15 @@ def render(loaded: LoadedReport, out: Path, commentary: dict | None = None) -> s
     return env.get_template("report.html.j2").render(
         run=loaded.result, env=loaded.result.environment, sources=loaded.sources, topics=topics,
         summary=summary_rows(topics), counts=counts, status=STATUS, dbms_name=charts.DBMS_NAME,
-        generated_at=datetime.now().astimezone(), commentary_enabled=commentary is not None,
+        generated_at=datetime.now().astimezone(), commentary_enabled=commentary is not None, ai_note=ai_note,
         css=Markup((HERE / "static" / "report.css").read_text(encoding="utf-8")),
         js=Markup((HERE / "static" / "report.js").read_text(encoding="utf-8")),
     )
 
 
-def build(loaded: LoadedReport, out: Path | None = None, commentary: dict | None = None) -> Path:
+def build(loaded: LoadedReport, out: Path | None = None, commentary: dict | None = None,
+          ai_errors: dict | None = None, ai_note: str = "") -> Path:
     out = out or REPORTS_DIR / f"{loaded.result.run_id}.html"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(loaded, out, commentary), encoding="utf-8")
+    out.write_text(render(loaded, out, commentary, ai_errors, ai_note), encoding="utf-8")
     return out

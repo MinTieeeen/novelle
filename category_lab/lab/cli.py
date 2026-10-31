@@ -1,7 +1,6 @@
 """Command line entry point: `uv run lab <command>`.
 
-Commands:          config, check (F1), list, run (F2), scaffold, clean (F3), report (F4)
-Later phases add:  AI commentary in the report (F5)
+Commands:  config, check (F1), list, run (F2), scaffold, clean (F3), report (F4, Gemini commentary F5)
 """
 from __future__ import annotations
 
@@ -49,7 +48,8 @@ def config(target: str | None = TargetOption) -> None:
     table.add_row("ODBC driver", cfg.sql.driver)
     table.add_row("Redis", f"{cfg.redis.host}:{cfg.redis.port} db {cfg.redis.db} "
                            f"(password {mask(cfg.redis.password)})")
-    table.add_row("Gemini", f"{cfg.gemini_model}, key {mask(cfg.gemini_api_key)}")
+    table.add_row("Gemini", f"{cfg.gemini_model} (dự phòng: {', '.join(cfg.gemini_fallback_models) or 'không'}), "
+                            f"key {mask(cfg.gemini_api_key)}")
     table.add_row("File .env", "\n".join(cfg.sources) or "(không có, chỉ dùng biến môi trường)")
     console.print(table)
 
@@ -195,9 +195,12 @@ def report(run_id: str = typer.Argument("latest", help="runId trong results/, ho
            target: str | None = typer.Option(None, "--target", "-t",
                                              help="Khi gộp: chỉ lấy các lần chạy với Redis target này."),
            out: Path | None = typer.Option(None, "--out", "-o", help="Đường dẫn file HTML (mặc định reports/)."),
-           open_: bool = typer.Option(False, "--open", help="Mở report bằng trình duyệt sau khi tạo.")) -> None:
+           open_: bool = typer.Option(False, "--open", help="Mở report bằng trình duyệt sau khi tạo."),
+           llm: bool = typer.Option(True, "--llm/--no-llm", help="Thêm nhận xét của Gemini (cần GEMINI_API_KEY)."),
+           refresh_llm: bool = typer.Option(False, "--refresh-llm",
+                                            help="Hỏi lại Gemini dù kết quả không đổi (bỏ qua cache).")) -> None:
     """Tạo report HTML (một file, mở offline) từ kết quả trong results/."""
-    from lab.report import builder, loader   # imported here so `lab run` does not load Jinja/markdown
+    from lab.report import builder, gemini, loader   # imported here so `lab run` stays light
 
     try:
         if latest_per_topic:
@@ -208,7 +211,27 @@ def report(run_id: str = typer.Argument("latest", help="runId trong results/, ho
     except FileNotFoundError as exc:
         console.print(f"[bold red]Không tìm thấy kết quả:[/] {exc}")
         raise typer.Exit(1)
-    path = builder.build(loaded, out)
+    commentary, ai_errors, ai_note = None, {}, ""
+    if not llm:
+        ai_note = "report tạo với --no-llm"
+    else:
+        cfg = _load(None)
+        if not cfg.gemini_api_key:
+            ai_note = "chưa đặt GEMINI_API_KEY trong category_lab/.env"
+            console.print(f"[yellow]Bỏ qua nhận xét AI:[/] {ai_note}")
+        else:
+            def progress(topic: str, how: str) -> None:
+                text = {"cache": "dùng cache",
+                        "stale": "[yellow]mọi model đều lỗi, dùng nhận xét của lần trước[/]"}.get(how)
+                console.print(f"  Gemini · {topic}: " + (text or f"đang hỏi {how.split(':', 1)[1]} ..."))
+            res = gemini.generate(loaded.result.topics, loaded.result.environment, loaded.results_dir,
+                                  api_key=cfg.gemini_api_key, model=cfg.gemini_model,
+                                  fallback_models=cfg.gemini_fallback_models, refresh=refresh_llm,
+                                  progress=progress)
+            commentary, ai_errors = res.commentary, res.errors
+            for topic, err in ai_errors.items():
+                console.print(f"  [bold red]Gemini · {topic} lỗi:[/] {err}", soft_wrap=True)
+    path = builder.build(loaded, out, commentary, ai_errors, ai_note)
     n = sum(len(t.scenarios) for t in loaded.result.topics)
     console.print(f"[green]Đã tạo report[/] ({len(loaded.result.topics)} topic, {n} scenario, "
                   f"từ {len(loaded.sources)} lần chạy): [cyan]{path.as_posix()}[/]")

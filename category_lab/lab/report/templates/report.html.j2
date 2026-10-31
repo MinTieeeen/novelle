@@ -82,100 +82,57 @@
   </div>
   {% endif %}
 
-  <div class="card ai">
-    <h3>Nhận xét AI <span class="badge">Gemini</span></h3>
-    {% if tv.commentary %}
-      {% set c = tv.commentary %}
-      <p class="ai-note">Nội dung do AI sinh từ số liệu bên dưới, cần đối chiếu với nhận xét của thành viên.</p>
-      <p>{{ c.summary }}</p>
-      <div class="cols">
-        <div><h4>SQL Server</h4><p>{{ c.sqlserver }}</p></div>
-        <div><h4>Redis</h4><p>{{ c.redis }}</p></div>
-      </div>
-      <h4>So sánh</h4><p>{{ c.comparison }}</p>
-      <h4>Khuyến nghị cho Novelle</h4><p>{{ c.recommendation }}</p>
-      {% if c.caveats %}<h4>Lưu ý về phép đo</h4><ul>{% for x in c.caveats %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
-    {% else %}
-      <p class="muted">Chưa có nhận xét AI cho topic này{% if not commentary_enabled %} (report được tạo không kèm Gemini){% endif %}.</p>
-    {% endif %}
-  </div>
-
   {% for pv in tv.pairs %}
   {% set p = pv.pair %}
   <article class="card pair" id="pair-{{ topic.id }}-{{ p.key }}">
     {% set pid = "pair-" ~ topic.id ~ "-" ~ p.key %}
     <header class="pair-head">
       <h3>{{ p.title }}</h3>
-      <div class="code-tabs" role="tablist" aria-label="Câu lệnh đã chạy">
-        {% for dbms in ["sqlserver", "redis"] %}
+      <div class="code-tabs" role="tablist" aria-label="Chi tiết từng DBMS">
+        {% for dbms, sv in [("sqlserver", pv.sql), ("redis", pv.redis)] %}
         <button type="button" role="tab" id="{{ pid }}-tab-{{ dbms }}" aria-controls="{{ pid }}-code-{{ dbms }}"
                 aria-selected="{{ 'true' if loop.first else 'false' }}" tabindex="{{ 0 if loop.first else -1 }}">
           <i class="sw {{ 's1' if dbms == 'sqlserver' else 's2' }}"></i>{{ dbms_name[dbms] }}
+          {% if sv %}<span class="st {{ sv.status_class }}" aria-label="{{ sv.status_label }}">{{ sv.status_icon }}</span>{% endif %}
         </button>
         {% endfor %}
       </div>
     </header>
-    <div class="code-panels">
-      {% for dbms, sv in [("sqlserver", pv.sql), ("redis", pv.redis)] %}
-      <div role="tabpanel" id="{{ pid }}-code-{{ dbms }}" aria-labelledby="{{ pid }}-tab-{{ dbms }}"
-           {% if not loop.first %}hidden{% endif %}>
-        <h4 class="print-only"><i class="sw {{ 's1' if dbms == 'sqlserver' else 's2' }}"></i>{{ dbms_name[dbms] }}</h4>
-        {% if sv and sv.s.statements %}
-          {% for st in sv.s.statements %}{% include "_statement.html.j2" %}{% endfor %}
-        {% elif sv %}
-          <p class="muted small">Lần chạy này không ghi lại câu lệnh nào. Chạy lại <code>lab run {{ topic.id }}</code>, hoặc gọi <code>ctx.statement(label, text)</code> cho đoạn code không đi qua bench.</p>
-        {% else %}
-          <p class="muted small">Chưa có scenario {{ dbms_name[dbms] }} cho cặp này.</p>
-        {% endif %}
-      </div>
-      {% endfor %}
-    </div>
 
-    {% if pv.timing_rows %}
-    <div class="figure">
-      <div class="legend" aria-hidden="true">
-        <span><i class="sw s1"></i>SQL Server</span><span><i class="sw s2"></i>Redis</span>
-        <span class="muted">thanh = p50 · vạch = tới p95</span>
+    {% if pv.timing_rows or p.shared %}
+    <section class="compare">
+      <h4>So sánh</h4>
+      {% if pv.timing_rows %}
+      <div class="figure">
+        <div class="legend" aria-hidden="true">
+          <span><i class="sw s1"></i>SQL Server</span><span><i class="sw s2"></i>Redis</span>
+          <span class="muted">thanh = p50 · vạch = tới p95</span>
+        </div>
+        {{ pv.chart }}
+        {% if p.timing_verdict %}<p class="verdict"><b>{{ p.timing_verdict.text }}</b> <span class="muted">(so biến thể tốt nhất mỗi bên)</span></p>{% endif %}
       </div>
-      {{ pv.chart }}
-      {% if p.timing_verdict %}<p class="verdict"><b>{{ p.timing_verdict.text }}</b> <span class="muted">(so biến thể tốt nhất mỗi bên)</span></p>{% endif %}
-    </div>
-    <details class="table-view">
-      <summary>Bảng số liệu thời gian</summary>
+      {% endif %}
+      {% if p.shared %}
       <div class="table-wrap">
       <table class="data">
-        <thead><tr><th>DBMS</th><th>Biến thể</th><th class="num">p50</th><th class="num">p95</th><th class="num">min</th><th class="num">max</th><th class="num">n</th><th class="num">Độ phân giải</th><th>Cách đo</th></tr></thead>
+        <thead><tr><th>Metric</th><th class="num">SQL Server</th><th class="num">Redis</th><th>Kết luận</th></tr></thead>
         <tbody>
-        {% for dbms, m in pv.timing_rows %}
-          <tr><td><i class="sw {{ 's1' if dbms == 'sqlserver' else 's2' }}"></i>{{ dbms_name[dbms] }}</td><td>{{ m.label }}</td>
-            <td class="num">{{ m.stats.p50|ms }}{% if m.coarse %}*{% endif %}</td><td class="num">{{ m.stats.p95|ms }}</td>
-            <td class="num">{{ m.stats.min|ms }}</td><td class="num">{{ m.stats.max|ms }}</td><td class="num">{{ m.stats.count }}</td>
-            <td class="num">{{ (m.resolution_ms|ms) if m.resolution_ms else "–" }}</td><td class="small">{{ m.note }}</td></tr>
+        {% for r in p.shared %}
+          <tr><td>{{ r.name }} · {{ r.label }}</td><td class="num">{{ r.sql|value }}</td><td class="num">{{ r.redis|value }}</td><td>{{ r.verdict.text }}</td></tr>
         {% endfor %}
         </tbody>
       </table>
       </div>
-    </details>
+      {% endif %}
+    </section>
     {% endif %}
 
-    {% if p.shared %}
-    <div class="table-wrap">
-    <table class="data">
-      <thead><tr><th>Metric</th><th class="num">SQL Server</th><th class="num">Redis</th><th>Kết luận</th></tr></thead>
-      <tbody>
-      {% for r in p.shared %}
-        <tr><td>{{ r.name }} · {{ r.label }}</td><td class="num">{{ r.sql|value }}</td><td class="num">{{ r.redis|value }}</td><td>{{ r.verdict.text }}</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    {% endif %}
-
-    <div class="cols">
-      {% for sv, dbms in [(pv.sql, "sqlserver"), (pv.redis, "redis")] %}
-      <div class="side">
-        <h4><i class="sw {{ 's1' if dbms == 'sqlserver' else 's2' }}"></i>{{ dbms_name[dbms] }}</h4>
-        {% if sv %}{% include "_scenario.html.j2" %}{% else %}<p class="muted">Chưa có scenario cho DBMS này.</p>{% endif %}
+    <div class="code-panels">
+      {% for dbms, sv in [("sqlserver", pv.sql), ("redis", pv.redis)] %}
+      <div role="tabpanel" id="{{ pid }}-code-{{ dbms }}" aria-labelledby="{{ pid }}-tab-{{ dbms }}"
+           {% if not loop.first %}hidden{% endif %}>
+        <h4 class="panel-title"><i class="sw {{ 's1' if dbms == 'sqlserver' else 's2' }}"></i>Chi tiết {{ dbms_name[dbms] }}</h4>
+        {% if sv %}{% include "_scenario.html.j2" %}{% else %}<p class="muted small">Chưa có scenario {{ dbms_name[dbms] }} cho cặp này.</p>{% endif %}
       </div>
       {% endfor %}
     </div>
@@ -187,11 +144,28 @@
     <h3>Scenario không ghép cặp</h3>
     {% for sv in tv.unpaired %}
       <div class="side solo"><h4><i class="sw {{ 's1' if sv.s.dbms == 'sqlserver' else 's2' }}"></i>{{ dbms_name[sv.s.dbms] }} · {{ sv.s.title }}</h4>
-        {% if sv.s.statements %}<details class="statements"><summary>Câu lệnh đã chạy</summary>{% for st in sv.s.statements %}{% include "_statement.html.j2" %}{% endfor %}</details>{% endif %}
         {% include "_scenario.html.j2" %}</div>
     {% endfor %}
   </div>
   {% endif %}
+
+  <div class="card ai" id="ai-{{ topic.id }}">
+    <h3>Nhận xét so sánh SQL Server và Redis <span class="badge">AI · Gemini</span></h3>
+    {% if tv.commentary %}
+      {% set c = tv.commentary %}
+      <p class="ai-note">Do {{ c.model }} sinh từ số liệu của topic{% if c.generated_at %} lúc {{ c.generated_at[:16]|replace("T", " ") }} UTC{% endif %}. Cần đối chiếu với nhận xét của thành viên trước khi đưa vào báo cáo.</p>
+      {% if c.stale %}<p class="ai-note"><span class="st critical">⚠</span> Đây là nhận xét từ lần trước: lần này Gemini lỗi ({{ tv.ai_error }}). Số liệu có thể đã thay đổi, chạy lại <code>lab report</code> sau.</p>{% endif %}
+      <h4>So sánh theo chủ đề</h4>
+      <p>{{ c.comparison }}</p>
+      <h4>Khuyến nghị cho Novelle</h4>
+      <p>{{ c.recommendation }}</p>
+      {% if c.caveats %}<h4>Lưu ý về phép đo</h4><ul>{% for x in c.caveats %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+    {% elif tv.ai_error %}
+      <p class="muted">Không tạo được nhận xét AI: {{ tv.ai_error }}</p>
+    {% else %}
+      <p class="muted">Chưa có nhận xét AI{% if ai_note %} ({{ ai_note }}){% endif %}.</p>
+    {% endif %}
+  </div>
 
   {% if tv.notes_html %}
   <div class="card notes">
