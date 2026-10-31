@@ -1,11 +1,11 @@
 """Lab configuration: SQL Server (always AWS RDS), Redis (local or aws) and the LLM used by `lab report`.
 
-Every setting lives in a .env file; no value is hard-coded here. Files are layered, highest priority first:
+Every setting lives in ONE file shared by the whole project, novelle/.env (backend scripts, docker
+compose and the lab all read it); no value is hard-coded here. Layers, highest priority first:
   1. real environment variables   docker compose sets some of them for the lab container
-  2. category_lab/.env             your secrets (GEMINI_API_KEY) and anything you want to override
-  3. novelle_backend/.env          DB_HOST and the RDS passwords, shared with the backend scripts
-  4. category_lab/.env.example     committed template: every key with its default (non-secret) value
-So a key added to .env.example works for everyone at once, and `.env` stays small.
+  2. novelle/.env                  secrets (RDS passwords, GEMINI_API_KEY) and local values
+  3. novelle/.env.example          committed template: every key with its default (non-secret) value
+So a key added to .env.example works for everyone at once.
 
 Where things are:
   lab/env.py    reading the .env layers (EnvSource), ConfigError
@@ -31,9 +31,8 @@ LAB_DIR = Path(__file__).resolve().parent.parent          # novelle/category_lab
 Target = Literal["local", "aws"]
 TARGETS: tuple[Target, ...] = ("local", "aws")
 
-ENV_FILES = EnvFiles(defaults=LAB_DIR / ".env.example",
-                     backend=LAB_DIR.parent / "novelle_backend" / ".env",
-                     lab=LAB_DIR / ".env")
+PROJECT_DIR = LAB_DIR.parent                              # novelle
+ENV_FILES = EnvFiles(defaults=PROJECT_DIR / ".env.example", local=PROJECT_DIR / ".env")
 
 
 class EnvKey(StrEnum):
@@ -49,7 +48,7 @@ class EnvKey(StrEnum):
     SQL_APP_NAME = "LAB_SQL_APP_NAME"
 
 
-# Which variable of novelle_backend/.env holds the password of each login (see 01_create_logins_users.sql).
+# Which variable of novelle/.env holds the password of each login (see 01_create_logins_users.sql).
 SQL_PASSWORD_KEY_BY_LOGIN: Mapping[str, str] = {
     "novelle_migrator": "MIGRATOR_PASSWORD",
     "novelle_app": "APP_PASSWORD",

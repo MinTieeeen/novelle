@@ -1,5 +1,5 @@
-# Local environment for Novelle. 
-# (credentials in novelle_backend/.env). This file only provides:
+# Local environment for Novelle. SQL Server is the shared AWS RDS instance; every setting and secret is in
+# the single novelle/.env (template: .env.example), also read by compose for ${...}. This file only provides:
 #   redis  Redis Stack (RediSearch + RedisJSON + RedisInsight), configured like the Redis on EC2
 #   lab    Python image for category_lab (ODBC Driver 18, sqlcmd, redis-cli, uv), started on demand
 #
@@ -33,10 +33,8 @@ services:
     image: novelle-lab:latest
     working_dir: /workspace/category_lab
     env_file:
-      - path: novelle_backend/.env        # DB_HOST and the RDS passwords
+      - path: .env                        # the single settings file: RDS, lab, Gemini
         required: true
-      - path: category_lab/.env           # GEMINI_API_KEY etc. (created in lab phase F1)
-        required: false
     environment:
       LAB_LOCAL_REDIS_HOST: redis
       LAB_LOCAL_REDIS_PORT: "6379"

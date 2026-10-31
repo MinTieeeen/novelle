@@ -16,11 +16,11 @@ def write(path: Path, text: str) -> Path:
 
 @pytest.fixture
 def files(tmp_path: Path) -> EnvFiles:
-    """The real committed defaults + test backend/lab files."""
-    backend = write(tmp_path / "backend.env", "DB_HOST=rds.example\nMIGRATOR_PASSWORD=m1\nRO_PASSWORD=r1\n")
-    lab = write(tmp_path / "lab.env", "LAB_AWS_REDIS_PASSWORD=from-lab-env\nGEMINI_API_KEY=k\n"
-                                      "LAB_SQL_PORT=\n")                      # empty line must not wipe the default
-    return replace(ENV_FILES, backend=backend, lab=lab)
+    """The real committed defaults (novelle/.env.example) + a test novelle/.env."""
+    local = write(tmp_path / ".env", "DB_HOST=rds.example\nMIGRATOR_PASSWORD=m1\nRO_PASSWORD=r1\n"
+                                     "LAB_AWS_REDIS_PASSWORD=from-lab-env\nGEMINI_API_KEY=k\n"
+                                     "LAB_SQL_PORT=\n")                       # empty line must not wipe the default
+    return replace(ENV_FILES, local=local)
 
 
 def test_defaults_come_from_env_example(files):
@@ -69,12 +69,11 @@ def test_llm_is_a_provider_subclass_built_from_its_prefix(files):
 
 
 def test_missing_values_raise(tmp_path: Path):
-    nothing = EnvFiles(defaults=tmp_path / "none", backend=tmp_path / "none", lab=tmp_path / "none")
+    nothing = EnvFiles(defaults=tmp_path / "none", local=tmp_path / "none")
     with pytest.raises(ConfigError, match="LAB_TARGET"):
         load_config(environ={}, files=nothing)
     with pytest.raises(ConfigError, match="DB_HOST"):
-        load_config(environ={"MIGRATOR_PASSWORD": "x"}, files=replace(ENV_FILES, backend=tmp_path / "none",
-                                                                       lab=tmp_path / "none"))
+        load_config(environ={"MIGRATOR_PASSWORD": "x"}, files=replace(ENV_FILES, local=tmp_path / "none"))
     with pytest.raises(ConfigError, match="Unknown target"):
         load_config("prod", environ={}, files=nothing)
     assert EnvSource({"K": ""}, ()).optional("K") is None

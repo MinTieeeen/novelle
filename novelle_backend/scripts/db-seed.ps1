@@ -1,20 +1,27 @@
-# Seeds (or resets) the Novelle mock data on the SQL Server in novelle_backend\.env.
+# Seeds (or resets) the Novelle mock data on the SQL Server in novelle\.env (the project's single settings file).
 #
 #   .\scripts\db-seed.ps1          run database\seed\10 ... 90 as novelle_migrator
 #   .\scripts\db-seed.ps1 reset    delete ALL data (except Genre) so the seed can be run again
 #
-# Needs in .env: DB_HOST, MIGRATOR_PASSWORD and either DEMO_PASSWORD (a BCrypt hash is made from it with
+# Needs in novelle\.env: DB_HOST, MIGRATOR_PASSWORD and either DEMO_PASSWORD (a BCrypt hash is made from it with
 # Node + bcryptjs in a temporary folder) or DEMO_PASSWORD_HASH (a ready-made BCrypt hash, "$2a$10$...").
 param([string]$Action = "seed")
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
-if (-not (Test-Path .env)) { throw "novelle_backend\.env not found" }
+$envFile = Join-Path (Join-Path $PSScriptRoot "..\..") ".env"
+if (-not (Test-Path $envFile)) { throw "novelle\.env not found (copy novelle\.env.example to novelle\.env)" }
 $envVars = @{}
-Get-Content .env | ForEach-Object {
-    if ($_ -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$') { $envVars[$Matches[1]] = $Matches[2].Trim() }
+Get-Content $envFile -Encoding UTF8 | ForEach-Object {
+    if ($_ -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$') {
+        $value = $Matches[2].Trim()
+        if ($value.Length -ge 2 -and $value[0] -eq $value[-1] -and "'`"".Contains($value[0])) {
+            $value = $value.Substring(1, $value.Length - 2)      # quoted value
+        }
+        $envVars[$Matches[1]] = $value
+    }
 }
-foreach ($k in "DB_HOST", "MIGRATOR_PASSWORD") { if (-not $envVars[$k]) { throw "$k missing in .env" } }
+foreach ($k in "DB_HOST", "MIGRATOR_PASSWORD") { if (-not $envVars[$k]) { throw "$k missing in novelle\.env" } }
 $env:SQLCMDPASSWORD = $envVars["MIGRATOR_PASSWORD"]
 
 function Invoke-Sql([string]$File, [string[]]$Extra = @()) {
@@ -30,7 +37,7 @@ if ($Action -eq "reset") {
 
 $hash = $envVars["DEMO_PASSWORD_HASH"]
 if (-not $hash) {
-    if (-not $envVars["DEMO_PASSWORD"]) { throw "Set DEMO_PASSWORD or DEMO_PASSWORD_HASH in .env" }
+    if (-not $envVars["DEMO_PASSWORD"]) { throw "Set DEMO_PASSWORD or DEMO_PASSWORD_HASH in novelle\.env" }
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ("novelle-bcrypt-" + [Guid]::NewGuid())
     New-Item -ItemType Directory $tmp | Out-Null
     try {

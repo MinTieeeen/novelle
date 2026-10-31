@@ -1,6 +1,6 @@
 # Docker cho Novelle
 
-SQL Server **không chạy local**. Cả nhóm dùng chung AWS RDS (`NovelleDB`), thông tin kết nối nằm trong `novelle_backend/.env`. Schema và seed vẫn chạy bằng `novelle_backend/scripts/db-*.ps1|.sh`.
+SQL Server **không chạy local**. Cả nhóm dùng chung AWS RDS (`NovelleDB`), mọi thông tin kết nối và secret nằm trong file cấu hình chung `novelle/.env` (mẫu: `novelle/.env.example`). Schema và seed vẫn chạy bằng `novelle_backend/scripts/db-*.ps1|.sh`.
 
 `docker-compose.yml` ở thư mục `novelle/` chỉ có:
 
@@ -13,7 +13,7 @@ SQL Server **không chạy local**. Cả nhóm dùng chung AWS RDS (`NovelleDB`)
 
 ```bash
 cd novelle
-cp .env.example .env                      # đổi port nếu 6379/8001 đã bị chiếm
+cp .env.example .env                      # rồi điền DB_HOST, mật khẩu RDS, GEMINI_API_KEY; đổi port nếu 6379/8001 bị chiếm
 docker compose up -d                      # chạy redis
 docker compose --profile lab build        # build image novelle-lab một lần
 ```
@@ -33,8 +33,7 @@ Biến môi trường container nhận được:
 
 | Biến | Giá trị | Nguồn |
 |---|---|---|
-| `DB_HOST`, `MIGRATOR_PASSWORD`, `RO_PASSWORD`, … | RDS | `novelle_backend/.env` |
-| `GEMINI_API_KEY`, … | | `category_lab/.env` (không bắt buộc) |
+| `DB_HOST`, `MIGRATOR_PASSWORD`, `GEMINI_API_KEY`, `LAB_*`, … | | `novelle/.env` (qua `env_file`) |
 | `LAB_LOCAL_REDIS_HOST/PORT` | `redis` / `6379` | compose |
 | `LAB_AWS_REDIS_HOST/PORT` | `host.docker.internal` / `16379` | compose. Cần mở tunnel SSM trên máy host trước (`novelle_backend/scripts/aws-tunnel.*`) |
 

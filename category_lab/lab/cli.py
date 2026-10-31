@@ -219,7 +219,7 @@ def report(run_id: str = typer.Argument("latest", help="runId trong results/, ho
     else:
         cfg = _load(None).llm
         if not cfg.enabled:
-            ai_note = f"chưa đặt {cfg.env_keys().api_key} trong category_lab/.env"
+            ai_note = f"chưa đặt {cfg.env_keys().api_key} trong novelle/.env"
             console.print(f"[yellow]Bỏ qua nhận xét AI:[/] {ai_note}")
         else:
             def progress(topic: str, how: str) -> None:

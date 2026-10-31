@@ -54,16 +54,17 @@ uv run lab check
 
 ## Cấu hình
 
-**Mọi thiết lập nằm trong file `.env`, code không chứa giá trị mặc định nào.** Lab đọc theo tầng, tầng sau ghi đè tầng trước:
+**Cả dự án dùng một file cấu hình duy nhất: `novelle/.env`.** Script của backend, docker compose và lab đều đọc file này. Code không chứa giá trị mặc định nào. Lab đọc theo tầng, tầng sau ghi đè tầng trước:
 
 | Tầng | File | Chứa gì |
 |---|---|---|
-| 1 (thấp nhất) | `category_lab/.env.example` | **Được commit**. Mọi key kèm giá trị mặc định không bí mật. Thêm thiết lập mới thì thêm vào đây |
-| 2 | `novelle_backend/.env` | `DB_HOST` và mật khẩu RDS (`MIGRATOR_PASSWORD`, `RO_PASSWORD`, `APP_PASSWORD`), dùng chung với backend |
-| 3 | `category_lab/.env` | Secret của bạn (`GEMINI_API_KEY`) và những giá trị muốn đổi. Không commit |
-| 4 (cao nhất) | Biến môi trường thật | Docker compose đặt `LAB_LOCAL_REDIS_HOST=redis`, … |
+| 1 (thấp nhất) | `novelle/.env.example` | **Được commit**. Mọi key của cả dự án kèm giá trị mặc định không bí mật. Thêm thiết lập mới thì thêm vào đây |
+| 2 | `novelle/.env` | Toàn bộ cấu hình của bạn: mật khẩu RDS, `GEMINI_API_KEY`, các giá trị muốn đổi. Không commit |
+| 3 (cao nhất) | Biến môi trường thật | Docker compose đặt `LAB_LOCAL_REDIS_HOST=redis`, … |
 
+- Lần đầu: `cp .env.example .env` trong thư mục `novelle/`, rồi điền secret.
 - Dòng để trống (`KEY=`) được coi là không đặt, nên không xoá mất giá trị mặc định ở tầng dưới.
+- Giá trị có khoảng trắng phải đặt trong nháy (`LAB_ODBC_DRIVER="ODBC Driver 18 for SQL Server"`), vì `db-seed.sh` đọc file bằng `source`.
 - `lab config` cho biết đang dùng những file nào và giá trị gì (mật khẩu được che).
 - `--target local|aws` **chỉ chọn Redis**. SQL Server luôn là RDS dùng chung.
 

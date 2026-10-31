@@ -177,7 +177,7 @@ def check_llm(cfg: LabConfig, report: CheckReport) -> None:
     group = f"LLM ({llm.display_name})"
     if not llm.enabled:
         report.results.append(CheckResult(group, "API key", "WARN",
-                                          f"chưa đặt {llm.env_keys().api_key} trong category_lab/.env "
+                                          f"chưa đặt {llm.env_keys().api_key} trong novelle/.env "
                                           f"(lấy key tại {llm.key_url}; chỉ cần cho nhận xét AI trong report)"))
         return
 

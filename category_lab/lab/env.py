@@ -1,8 +1,8 @@
 """Reading settings from layered .env files. No lab-specific keys here: lab/config.py and lab/llm use it.
 
-Layers, lowest priority first (see EnvFiles): the committed .env.example with every default, the
-backend's .env with the RDS credentials, the lab's .env with secrets/overrides, then real environment
-variables. An empty value ("KEY=") counts as not set, so it never wipes a default from a lower layer.
+Layers, lowest priority first (see EnvFiles): the committed novelle/.env.example with every default,
+the single novelle/.env with the secrets and local values, then real environment variables.
+An empty value ("KEY=") counts as not set, so it never wipes a default from a lower layer.
 """
 from __future__ import annotations
 
@@ -21,12 +21,11 @@ class ConfigError(RuntimeError):
 @dataclass(frozen=True)
 class EnvFiles:
     """The .env layers, lowest priority first."""
-    defaults: Path
-    backend: Path
-    lab: Path
+    defaults: Path              # novelle/.env.example (committed)
+    local: Path                 # novelle/.env (secrets, never committed)
 
     def layers(self) -> tuple[Path, ...]:
-        return self.defaults, self.backend, self.lab
+        return self.defaults, self.local
 
 
 @dataclass(frozen=True)
@@ -56,8 +55,8 @@ class EnvSource:
     def text(self, key: str) -> str:
         value = self.optional(key)
         if value is None:
-            raise ConfigError(f"{key} is not set: add it to category_lab/.env (all keys and defaults are in "
-                              f"category_lab/.env.example; RDS settings go in novelle_backend/.env)")
+            raise ConfigError(f"{key} is not set: add it to novelle/.env (every key, with its default, "
+                              f"is listed in novelle/.env.example)")
         return value
 
     def integer(self, key: str) -> int:
