@@ -185,7 +185,7 @@ def check_llm(cfg: LabConfig, report: CheckReport) -> None:
         from lab.llm.clients import client_for
         try:
             name = client_for(llm).check_key(llm)
-            return "PASS", f"key hợp lệ, model {llm.model} ({name})"
+            return "PASS", f"key hợp lệ, dùng được {name}"
         except Exception as exc:
             return "WARN", f"key hoặc model không dùng được: {type(exc).__name__}: {str(exc)[:160]}"
 

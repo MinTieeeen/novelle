@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from lab.llm import GeminiConfig
 from lab.framework.result import Environment, Statement
 from lab.llm import gemini_client as gemini
@@ -71,7 +73,7 @@ def test_payload_contains_results_but_no_connection_details(tmp_path):
 def test_generate_uses_cache_and_retries(tmp_path):
     results = make_results(tmp_path)
     loaded = loader.load("r1", results)
-    client = FakeClient(failures=[429, 503])
+    client = FakeClient(failures=[503, 502])          # overloaded: retried on the same model
     sleeps = []
     res = gemini.generate(loaded.result.topics, loaded.result.environment, results, llm("m"),
                           client=client, sleep=sleeps.append)
@@ -147,3 +149,56 @@ def test_fallback_model_then_stale_cache(tmp_path):
     assert c.stale and "503" in res.errors["demo"] and c.comparison == ANSWER["comparison"]
     html = builder.render(loaded, tmp_path / "reports" / "r1.html", res.commentary, res.errors)
     assert "nhận xét từ lần trước" in html
+
+
+class QuotaClient(PerModelClient):
+    """429 for the models in `down`, 404 for those in `gone`."""
+
+    def __init__(self, down=(), gone=()):
+        super().__init__(down=())
+        self.quota, self.gone = set(down), set(gone)
+
+    def generate_content(self, model, contents, config):
+        self.models_asked.append(model)
+        if model in self.quota:
+            raise APIError(429)
+        if model in self.gone:
+            raise APIError(404)
+        return Resp(json.dumps(ANSWER, ensure_ascii=False))
+
+
+def test_used_up_quota_switches_model_at_once_and_for_the_rest_of_the_run(tmp_path):
+    results = make_results(tmp_path)
+    loaded = loader.load("r1", results)
+    first = loaded.result.topics[0]
+    second = first.model_copy(deep=True)
+    second.topic.id = "demo2"
+    cfg = llm("gemini-3.8-flash", fallbacks=("gemini-3.7-flash", "gemini-3.6-flash"))
+    client = QuotaClient(down={"gemini-3.8-flash"}, gone={"gemini-3.7-flash"})
+    events = []
+    res = gemini.generate([first, second], loaded.result.environment, results, cfg, client=client,
+                          sleep=lambda s: pytest.fail("a used-up quota must not be retried"),
+                          progress=lambda t, how: events.append((t, how)))
+    assert {c.model for c in res.commentary.values()} == {"gemini-3.6-flash"} and not res.errors
+    # each failing model asked once in the whole run; the second topic goes straight to 3.6
+    assert client.models_asked == ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.6-flash"]
+    assert ("demo", "skip:gemini-3.8-flash:hết quota") in events
+
+
+def test_all_models_out_of_quota_is_reported(tmp_path):
+    results = make_results(tmp_path)
+    loaded = loader.load("r1", results)
+    cfg = llm("a", fallbacks=("b",))
+    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, cfg,
+                          client=QuotaClient(down={"a", "b"}))
+    assert "mọi model đều hết quota" in res.errors["demo"] and "a (hết quota)" in res.errors["demo"]
+
+
+def test_check_key_reports_the_first_model_that_works():
+    class Ping(QuotaClient):
+        def get(self, model):
+            return None
+    client = Ping(down={"a"})
+    assert gemini.check_key(llm("a", fallbacks=("b",)), client=client) == "b (bỏ qua: a hết quota)"
+    with pytest.raises(RuntimeError, match="không model nào"):
+        gemini.check_key(llm("a"), client=Ping(down={"a"}))

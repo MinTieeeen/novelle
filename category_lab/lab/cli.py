@@ -223,9 +223,14 @@ def report(run_id: str = typer.Argument("latest", help="runId trong results/, ho
             console.print(f"[yellow]Bỏ qua nhận xét AI:[/] {ai_note}")
         else:
             def progress(topic: str, how: str) -> None:
-                text = {"cache": "dùng cache",
-                        "stale": "[yellow]mọi model đều lỗi, dùng nhận xét của lần trước[/]"}.get(how)
-                console.print(f"  {cfg.display_name} · {topic}: " + (text or f"đang hỏi {how.split(':', 1)[1]} ..."))
+                kind, _, rest = how.partition(":")
+                if kind == "skip":
+                    model, _, why = rest.partition(":")
+                    text = f"[yellow]{model} {why}, chuyển sang model kế tiếp[/]"
+                else:
+                    text = {"cache": "dùng cache", "request": f"đang hỏi {rest} ...",
+                            "stale": "[yellow]mọi model đều lỗi, dùng nhận xét của lần trước[/]"}.get(kind, how)
+                console.print(f"  {cfg.display_name} · {topic}: {text}")
             res = client_for(cfg).generate(loaded.result.topics, loaded.result.environment,
                                                       loaded.results_dir, cfg, refresh=refresh_llm,
                                                       progress=progress)

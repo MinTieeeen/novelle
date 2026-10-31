@@ -30,10 +30,15 @@ from lab.framework.result import Environment, Metric, ScenarioResult, TopicResul
 PROMPT_VERSION = "2"
 # Settings (model, fallbacks, temperature, timeout, retry delays, payload limits) come from GeminiConfig,
 # i.e. from the .env files; only facts about the HTTP API and fixed texts live here.
-RETRYABLE = frozenset({429, 500, 502, 503, 504})   # overloaded / temporary errors worth retrying
+# What an HTTP error means for the next step (facts of the Gemini API, not settings):
+OVERLOADED = frozenset({500, 502, 503, 504})   # temporary: retry the same model, then switch
+QUOTA_EXHAUSTED = 429                          # this model's quota is used up (quota is per model): switch now
+MODEL_UNAVAILABLE = 404                        # model retired or not offered to this key: switch now
+SWITCH_NOW = frozenset({QUOTA_EXHAUSTED, MODEL_UNAVAILABLE})
 DATA_HEADER = "Dữ liệu thí nghiệm của chủ đề (JSON):\n"
 PING_PROMPT = "Trả lời đúng một chữ: OK"
 PING_MAX_TOKENS = 64
+SKIP_REASON = {QUOTA_EXHAUSTED: "hết quota", MODEL_UNAVAILABLE: "model không còn cho key này"}
 
 PROMPT_FILE = Path(__file__).parent / "prompts" / "commentary.md"
 
@@ -159,7 +164,8 @@ def _status_code(exc: Exception) -> int | None:
 
 def ask(client, llm: GeminiConfig, model: str, payload: dict[str, Any],
         sleep: Callable[[float], None] = time.sleep) -> TopicCommentary:
-    """One topic, one model; retries overloaded responses after llm.retry_delays_s."""
+    """One topic, one model. Only overloaded (5xx) answers are retried, after llm.retry_delays_s; a used-up
+    quota or an unavailable model is raised at once so the caller switches to the next model."""
     from google.genai import types
     config = types.GenerateContentConfig(system_instruction=system_prompt(), temperature=llm.temperature,
                                          response_mime_type="application/json",
@@ -176,7 +182,7 @@ def ask(client, llm: GeminiConfig, model: str, payload: dict[str, Any],
             if attempt == len(delays):
                 raise RuntimeError(f"JSON của Gemini không đúng schema: {exc.errors()[0]['msg']}") from exc
         except Exception as exc:
-            if _status_code(exc) not in RETRYABLE or attempt == len(delays):
+            if _status_code(exc) not in OVERLOADED or attempt == len(delays):
                 raise
             sleep(delays[attempt])
     raise RuntimeError("unreachable")
@@ -204,11 +210,14 @@ def generate(topics: list[TopicResult], env: Environment, results_dir: Path, llm
              progress: Callable[[str, str], None] | None = None,
              sleep: Callable[[float], None] = time.sleep) -> GenerateResult:
     """Commentary for every topic that has results; a failing topic is reported, not raised.
+    Models are tried in order (llm.models). A model whose quota is used up (429) or that is not available
+    (404) is skipped for the rest of the run, so the next topics go straight to a model that still works.
     The cache key uses the main model only, so an answer from a fallback model is reused next time.
     When every model fails, the newest earlier answer for the topic is used and marked stale."""
     cache_dir = results_dir / ".llm-cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     result = GenerateResult()
+    skipped: dict[str, str] = {}                      # model -> why it is skipped for the rest of this run
     for topic in topics:
         tid = topic.topic.id
         payload = build_payload(topic, env, results_dir, llm)
@@ -223,6 +232,8 @@ def generate(topics: list[TopicResult], env: Environment, results_dir: Path, llm
 
         answer, used, error = None, None, None
         for candidate in llm.models:                                  # main model, then the fallbacks
+            if candidate in skipped:
+                continue
             if progress:
                 progress(tid, f"request:{candidate}")
             try:
@@ -230,9 +241,17 @@ def generate(topics: list[TopicResult], env: Environment, results_dir: Path, llm
                 answer, used = ask(client, llm, candidate, payload, sleep=sleep), candidate
                 break
             except Exception as exc:
+                code = _status_code(exc)
                 error = f"{candidate}: {type(exc).__name__}: {str(exc)[:240]}"
-                if _status_code(exc) not in RETRYABLE:      # bad key, bad request: another model won't help
+                if code in SWITCH_NOW:
+                    skipped[candidate] = SKIP_REASON[code]
+                    if progress:
+                        progress(tid, f"skip:{candidate}:{SKIP_REASON[code]}")
+                elif code not in OVERLOADED:        # bad key, bad request: another model won't help
                     break
+        if answer is None and skipped and all(m in skipped for m in llm.models):
+            error = "mọi model đều hết quota hoặc không dùng được: " + \
+                    ", ".join(f"{m} ({why})" for m, why in skipped.items())
         if answer is not None:
             generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             cache.write_text(json.dumps({"model": used, "generated_at": generated_at,
@@ -255,11 +274,21 @@ def generate(topics: list[TopicResult], env: Environment, results_dir: Path, llm
 
 
 def check_key(llm: GeminiConfig, client=None) -> str:
-    """Check that the key can GENERATE with the main model. models.get alone is not enough: a model retired
-    for new users is still listed but refuses generate_content. One tiny request."""
+    """Find the first model of llm.models that can GENERATE with this key (one tiny request per model tried;
+    models.get alone is not enough: a retired model is still listed but refuses generate_content).
+    Returns e.g. "gemini-3.6-flash (bỏ qua: gemini-3.8-flash hết quota)"; raises if none works."""
     from google.genai import types
     client = client or make_client(llm)
-    info = client.models.get(model=llm.model)
-    client.models.generate_content(model=llm.model, contents=PING_PROMPT,
-                                   config=types.GenerateContentConfig(max_output_tokens=PING_MAX_TOKENS))
-    return getattr(info, "display_name", None) or llm.model
+    skipped: list[str] = []
+    for model in llm.models:
+        try:
+            client.models.generate_content(model=model, contents=PING_PROMPT,
+                                           config=types.GenerateContentConfig(max_output_tokens=PING_MAX_TOKENS))
+        except Exception as exc:
+            code = _status_code(exc)
+            if code in SWITCH_NOW or code in OVERLOADED:
+                skipped.append(f"{model} {SKIP_REASON.get(code, f'lỗi {code}')}")
+                continue
+            raise
+        return model + (f" (bỏ qua: {'; '.join(skipped)})" if skipped else "")
+    raise RuntimeError("không model nào dùng được: " + "; ".join(skipped))
