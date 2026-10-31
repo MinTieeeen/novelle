@@ -1,8 +1,10 @@
 import json
 from pathlib import Path
 
+from lab.llm import GeminiConfig
 from lab.framework.result import Environment, Statement
-from lab.report import builder, gemini, loader
+from lab.llm import gemini_client as gemini
+from lab.report import builder, loader
 from test_report import T0, run, save, scenario, timing
 
 ANSWER = {
@@ -13,6 +15,11 @@ ANSWER = {
     "recommendation": "Dùng Redis làm cache cho trang chi tiết truyện.",
     "caveats": ["Chỉ 150 truyện."],
 }
+
+
+def llm(model="m", fallbacks=(), delays=(5, 15, 40)) -> GeminiConfig:
+    return GeminiConfig(api_key="k", model=model, fallback_models=tuple(fallbacks), temperature=0.3, timeout_s=60,
+                        retry_delays_s=tuple(delays), max_statement_chars=1500, max_plan_chars=2000)
 
 
 class Resp:
@@ -54,7 +61,7 @@ def test_payload_contains_results_but_no_connection_details(tmp_path):
     loaded = loader.load("r1", results)
     loaded.result.environment = Environment(target="local", sqlserver_version="15.0", redis_version="7.4.2",
                                             sql_database="NovelleDB", redis_endpoint="redis:6379")
-    payload = gemini.build_payload(loaded.result.topics[0], loaded.result.environment, results)
+    payload = gemini.build_payload(loaded.result.topics[0], loaded.result.environment, results, llm())
     text = json.dumps(payload, ensure_ascii=False)
     assert [s["scenario_id"] for s in payload["scenarios"]] == ["demo.sqlserver.a", "demo.redis.a"]   # no skipped
     assert "SELECT * FROM dbo.Story WHERE StoryId = 1" in text and '"p95"' in text
@@ -66,18 +73,18 @@ def test_generate_uses_cache_and_retries(tmp_path):
     loaded = loader.load("r1", results)
     client = FakeClient(failures=[429, 503])
     sleeps = []
-    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, api_key="k", model="m",
+    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, llm("m"),
                           client=client, sleep=sleeps.append)
     c = res.commentary["demo"]
     assert not res.errors and len(client.calls) == 3 and sleeps == [5, 15]
     assert set(c.by_scenario) == {"demo.sqlserver.a", "demo.redis.a"} and not c.cached
 
-    again = gemini.generate(loaded.result.topics, loaded.result.environment, results, api_key="k", model="m",
+    again = gemini.generate(loaded.result.topics, loaded.result.environment, results, llm("m"),
                             client=FakeClient())
     assert again.commentary["demo"].cached and again.commentary["demo"].comparison == ANSWER["comparison"]
 
     other_model = FakeClient()
-    gemini.generate(loaded.result.topics, loaded.result.environment, results, api_key="k", model="m2",
+    gemini.generate(loaded.result.topics, loaded.result.environment, results, llm("m2"),
                     client=other_model)
     assert len(other_model.calls) == 1                                             # model is part of the key
 
@@ -85,7 +92,7 @@ def test_generate_uses_cache_and_retries(tmp_path):
 def test_errors_are_reported_per_topic(tmp_path):
     results = make_results(tmp_path)
     loaded = loader.load("r1", results)
-    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, api_key="k", model="m",
+    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, llm("m"),
                           client=FakeClient(failures=[400]), sleep=lambda s: None)
     assert res.commentary == {} and "400" in res.errors["demo"]
 
@@ -93,7 +100,7 @@ def test_errors_are_reported_per_topic(tmp_path):
 def test_report_puts_comments_in_tabs_and_comparison_at_topic_end(tmp_path):
     results = make_results(tmp_path)
     loaded = loader.load("r1", results)
-    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, api_key="k", model="m",
+    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, llm("m"),
                           client=FakeClient())
     html = builder.render(loaded, tmp_path / "reports" / "r1.html", res.commentary)
     redis_tab = html[html.index('id="pair-demo-a-code-redis"'):html.index('id="pair-demo-b-code-sqlserver"')]
@@ -124,16 +131,17 @@ class PerModelClient(FakeClient):
 def test_fallback_model_then_stale_cache(tmp_path):
     results = make_results(tmp_path)
     loaded = loader.load("r1", results)
-    args = dict(api_key="k", model="main", fallback_models=("backup",), sleep=lambda s: None)
+    cfg = llm("main", fallbacks=("backup",))
+    args = dict(sleep=lambda s: None)
 
     client = PerModelClient(down={"main"})
-    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, client=client, **args)
+    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, cfg, client=client, **args)
     assert res.commentary["demo"].model == "backup" and not res.errors
-    assert client.models_asked.count("main") == len(gemini.RETRY_DELAYS_S) + 1 and client.models_asked[-1] == "backup"
+    assert client.models_asked.count("main") == len(cfg.retry_delays_s) + 1 and client.models_asked[-1] == "backup"
 
     # results change, every model is down: the previous answer is shown, marked stale
     loaded.result.topics[0].scenarios[0].metrics[0].value = 9.9
-    res = gemini.generate(loaded.result.topics, loaded.result.environment, results,
+    res = gemini.generate(loaded.result.topics, loaded.result.environment, results, cfg,
                           client=PerModelClient(down={"main", "backup"}), **args)
     c = res.commentary["demo"]
     assert c.stale and "503" in res.errors["demo"] and c.comparison == ANSWER["comparison"]

@@ -18,7 +18,7 @@ uv run lab report --latest-per-topic --target aws --out reports/team.html   # re
 - **Nhận xét AI (Gemini)**: mỗi topic gọi Gemini **một lần**. Nhận xét riêng của từng scenario nằm trong tab SQL Server / Redis của cặp; nhận xét so sánh hai DBMS (trả lời câu hỏi nghiên cứu, khuyến nghị cho Novelle, lưu ý về phép đo) nằm cuối mỗi topic.
   - Cần `GEMINI_API_KEY` trong `category_lab/.env`; `lab check` gọi thử key. Model: `GEMINI_MODEL` (mặc định `gemini-3.8-flash`). Khi model quá tải (429/503), lab thử lại rồi chuyển sang `GEMINI_FALLBACK_MODELS`. Nếu tất cả đều lỗi, report dùng nhận xét lần trước (có ghi chú) hoặc ghi rõ lỗi, report vẫn được tạo.
   - Kết quả được cache trong `results/.llm-cache/`. Tạo lại report khi số liệu không đổi thì không tốn request. `--refresh-llm` hỏi lại, `--no-llm` bỏ hẳn phần AI.
-  - Prompt nằm ở [`lab/report/prompts/commentary.md`](lab/report/prompts/commentary.md), sửa trực tiếp file đó (sửa xong, lần chạy sau tự hỏi lại vì cache key gồm cả prompt).
+  - Prompt nằm ở [`lab/llm/prompts/commentary.md`](lab/llm/prompts/commentary.md), sửa trực tiếp file đó (sửa xong, lần chạy sau tự hỏi lại vì cache key gồm cả prompt).
   - Chỉ số liệu, câu lệnh, nhận xét và tóm tắt plan được gửi đi; không gửi host, user, mật khẩu. Nhận xét AI cần đối chiếu với nhận xét của thành viên trước khi đưa vào báo cáo.
 - Có sẵn dark mode (theo hệ điều hành, hoặc bấm nút "Giao diện").
 
@@ -60,10 +60,36 @@ uv run lab check
 
 ## Cấu hình
 
-- Thông tin RDS (`DB_HOST`, `MIGRATOR_PASSWORD`, `RO_PASSWORD`, `APP_PASSWORD`) được đọc từ `novelle_backend/.env`, không chép sang chỗ khác.
-- Các thiết lập riêng của lab nằm trong `category_lab/.env` (tạo từ `.env.example`): user SQL, Redis cho từng target, Gemini.
-- Thứ tự ưu tiên: biến môi trường thật > `category_lab/.env` > `novelle_backend/.env`.
+**Mọi thiết lập nằm trong file `.env`, code không chứa giá trị mặc định nào.** Lab đọc theo tầng, tầng sau ghi đè tầng trước:
+
+| Tầng | File | Chứa gì |
+|---|---|---|
+| 1 (thấp nhất) | `category_lab/.env.example` | **Được commit**. Mọi key kèm giá trị mặc định không bí mật. Thêm thiết lập mới thì thêm vào đây |
+| 2 | `novelle_backend/.env` | `DB_HOST` và mật khẩu RDS (`MIGRATOR_PASSWORD`, `RO_PASSWORD`, `APP_PASSWORD`), dùng chung với backend |
+| 3 | `category_lab/.env` | Secret của bạn (`GEMINI_API_KEY`) và những giá trị muốn đổi. Không commit |
+| 4 (cao nhất) | Biến môi trường thật | Docker compose đặt `LAB_LOCAL_REDIS_HOST=redis`, … |
+
+- Dòng để trống (`KEY=`) được coi là không đặt, nên không xoá mất giá trị mặc định ở tầng dưới.
+- `lab config` cho biết đang dùng những file nào và giá trị gì (mật khẩu được che).
 - `--target local|aws` **chỉ chọn Redis**. SQL Server luôn là RDS dùng chung.
+
+Cấu trúc code cấu hình:
+
+```
+lab/env.py          EnvSource (đọc và gộp các tầng .env, có text/integer/decimal/items), EnvFiles, ConfigError
+lab/config.py       EnvKey, RedisEnvKeys, SqlServerConfig, RedisConfig, LabConfig, load_config
+lab/llm/
+  base.py           LLMKey (LLM_*), LLMEnvKeys (<PREFIX>_*), LLMConfig: lớp cha trừu tượng, tự đọc .env
+  gemini.py         GeminiConfig(LLMConfig): chỉ khai báo provider, tiền tố GEMINI_, nơi lấy key
+  registry.py       LLM_PROVIDERS, llm_from_env (chọn theo LLM_PROVIDER)
+  gemini_client.py  gọi Gemini: dựng payload, structured output, thử lại, model dự phòng, cache
+  clients.py        client_for(llm): chọn client theo provider (CLI và lab check chỉ gọi hàm này)
+  prompts/          commentary.md: system prompt cho nhận xét
+```
+
+- Tên biến môi trường là **đối tượng** (`EnvKey`, `RedisEnvKeys`, `LLMKey`, `LLMEnvKeys`), không phải chuỗi viết thẳng trong lời gọi hàm.
+- Mỗi phần có lớp cấu hình tự đọc từ `.env` bằng `from_env(...)`. Các hàm khác nhận **đối tượng cấu hình**, không nhận từng tham số rời.
+- Thêm một mô hình mới gồm 5 bước: tạo file `lab/llm/<tên>.py` với lớp con `LLMConfig`; đăng ký nó trong `lab/llm/registry.py`; thêm khối `<PREFIX>_*` vào `.env.example`; viết client giống `lab/llm/gemini_client.py`; thêm một nhánh vào `lab/llm/clients.py`.
 
 ## Viết scenario cho topic của bạn
 
@@ -128,8 +154,8 @@ lab/cli.py           Typer CLI
 lab/views.py         bảng Rich cho list/run
 lab/maintenance.py   scaffold và clean
 lab/report/          loader.py (đọc và gộp run.json), builder.py (dựng HTML), charts.py (SVG),
-                     gemini.py (nhận xét AI, cache, model dự phòng), prompts/commentary.md,
                      templates/ (Jinja2), static/ (CSS, JS được nhúng vào file report)
+lab/llm/             cấu hình, client và prompt của từng LLM provider (xem mục Cấu hình)
 lab/framework/       scenario.py (@scenario, Ctx), bench.py (đo phía server), registry.py (tự tìm topic),
                      runner.py (chạy, bắt lỗi, dọn dữ liệu, ghi run.json), result.py (model pydantic),
                      compare.py (ghép cặp và kết luận, dùng chung cho terminal và report),

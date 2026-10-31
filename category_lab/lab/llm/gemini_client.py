@@ -24,14 +24,16 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field, ValidationError
 
+from lab.llm.gemini import GeminiConfig
 from lab.framework.result import Environment, Metric, ScenarioResult, TopicResult
 
 PROMPT_VERSION = "2"
-MAX_STATEMENT_CHARS = 1500
-MAX_ARTIFACT_CHARS = 2000
-MAX_TEXT_CHARS = 600
-RETRY_DELAYS_S = (5, 15, 40)          # free tier: 429 / 503 are common, wait and retry
-RETRYABLE = {429, 500, 502, 503, 504}
+# Settings (model, fallbacks, temperature, timeout, retry delays, payload limits) come from GeminiConfig,
+# i.e. from the .env files; only facts about the HTTP API and fixed texts live here.
+RETRYABLE = frozenset({429, 500, 502, 503, 504})   # overloaded / temporary errors worth retrying
+DATA_HEADER = "Dữ liệu thí nghiệm của chủ đề (JSON):\n"
+PING_PROMPT = "Trả lời đúng một chữ: OK"
+PING_MAX_TOKENS = 64
 
 PROMPT_FILE = Path(__file__).parent / "prompts" / "commentary.md"
 
@@ -101,31 +103,31 @@ def _metric(m: Metric) -> dict[str, Any]:
     return out
 
 
-def _scenario(s: ScenarioResult, results_dir: Path) -> dict[str, Any]:
+def _scenario(s: ScenarioResult, results_dir: Path, llm: GeminiConfig) -> dict[str, Any]:
     out: dict[str, Any] = {"scenario_id": s.id, "dbms": s.dbms, "pair": s.pair, "title": s.title,
                            "status": s.status, "metrics": [_metric(m) for m in s.metrics],
                            "checks": [{"passed": c.passed, "message": c.message} for c in s.checks],
                            "member_notes": s.observations,
-                           "statements": [{"label": st.label, "text": _cut(st.text, MAX_STATEMENT_CHARS)}
+                           "statements": [{"label": st.label, "text": _cut(st.text, llm.max_statement_chars)}
                                           for st in s.statements]}
     if s.description:
         out["description"] = s.description
     if s.skip_reason:
         out["skip_reason"] = s.skip_reason
     if s.error:
-        out["error"] = _cut(s.error.strip().splitlines()[-1], MAX_TEXT_CHARS)
+        out["error"] = _cut(s.error.strip().splitlines()[-1], llm.max_statement_chars)
     plans = []
     for a in s.artifacts:                         # text plan summaries only, not the XML
         path = results_dir / a.path
         if a.kind == "text" and a.label.endswith(".plan") and path.is_file():
             plans.append({"label": a.label, "text": _cut(path.read_text(encoding="utf-8", errors="replace"),
-                                                          MAX_ARTIFACT_CHARS)})
+                                                          llm.max_plan_chars)})
     if plans:
         out["execution_plans"] = plans
     return out
 
 
-def build_payload(topic: TopicResult, env: Environment, results_dir: Path) -> dict[str, Any]:
+def build_payload(topic: TopicResult, env: Environment, results_dir: Path, llm: GeminiConfig) -> dict[str, Any]:
     t = topic.topic
     return {
         "topic": {"id": t.id, "title": t.title, "research_questions": t.research_questions, "context": t.context},
@@ -133,7 +135,7 @@ def build_payload(topic: TopicResult, env: Environment, results_dir: Path) -> di
                         "redis": env.redis_version, "redis_target": env.target,
                         "timing": "server-side only; SQL Server: statement looped K times in one batch between "
                                   "SYSDATETIME() calls, divided by K; Redis: sum of SLOWLOG durations"},
-        "scenarios": [_scenario(s, results_dir) for s in topic.scenarios if s.status != "skipped"],
+        "scenarios": [_scenario(s, results_dir, llm) for s in topic.scenarios if s.status != "skipped"],
     }
 
 
@@ -144,10 +146,10 @@ def payload_hash(payload: dict[str, Any], model: str) -> str:
 
 
 # --- calling Gemini -------------------------------------------------------------------------------------
-def make_client(api_key: str):
+def make_client(llm: GeminiConfig):
     from google import genai
     from google.genai import types
-    return genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=180_000))
+    return genai.Client(api_key=llm.api_key, http_options=types.HttpOptions(timeout=int(llm.timeout_s * 1000)))
 
 
 def _status_code(exc: Exception) -> int | None:
@@ -155,25 +157,28 @@ def _status_code(exc: Exception) -> int | None:
     return code if isinstance(code, int) else None
 
 
-def ask(client, model: str, payload: dict[str, Any], sleep: Callable[[float], None] = time.sleep) -> TopicCommentary:
+def ask(client, llm: GeminiConfig, model: str, payload: dict[str, Any],
+        sleep: Callable[[float], None] = time.sleep) -> TopicCommentary:
+    """One topic, one model; retries overloaded responses after llm.retry_delays_s."""
     from google.genai import types
-    config = types.GenerateContentConfig(system_instruction=system_prompt(), temperature=0.3,
+    config = types.GenerateContentConfig(system_instruction=system_prompt(), temperature=llm.temperature,
                                          response_mime_type="application/json",
                                          response_schema=TopicCommentary)
-    contents = "Dữ liệu thí nghiệm của chủ đề (JSON):\n" + json.dumps(payload, ensure_ascii=False, indent=1)
-    for attempt in range(len(RETRY_DELAYS_S) + 1):
+    contents = DATA_HEADER + json.dumps(payload, ensure_ascii=False, indent=1)
+    delays = llm.retry_delays_s
+    for attempt in range(len(delays) + 1):
         try:
             response = client.models.generate_content(model=model, contents=contents, config=config)
             if not response.text:
                 raise RuntimeError("Gemini trả về rỗng (có thể bị chặn bởi bộ lọc an toàn)")
             return TopicCommentary.model_validate_json(response.text)
         except ValidationError as exc:
-            if attempt == len(RETRY_DELAYS_S):
+            if attempt == len(delays):
                 raise RuntimeError(f"JSON của Gemini không đúng schema: {exc.errors()[0]['msg']}") from exc
         except Exception as exc:
-            if _status_code(exc) not in RETRYABLE or attempt == len(RETRY_DELAYS_S):
+            if _status_code(exc) not in RETRYABLE or attempt == len(delays):
                 raise
-            sleep(RETRY_DELAYS_S[attempt])
+            sleep(delays[attempt])
     raise RuntimeError("unreachable")
 
 
@@ -194,8 +199,8 @@ def _read_cache(path: Path) -> tuple[str, str, TopicCommentary] | None:
         return None
 
 
-def generate(topics: list[TopicResult], env: Environment, results_dir: Path, *, api_key: str, model: str,
-             fallback_models: tuple[str, ...] = (), refresh: bool = False, client=None,
+def generate(topics: list[TopicResult], env: Environment, results_dir: Path, llm: GeminiConfig, *,
+             refresh: bool = False, client=None,
              progress: Callable[[str, str], None] | None = None,
              sleep: Callable[[float], None] = time.sleep) -> GenerateResult:
     """Commentary for every topic that has results; a failing topic is reported, not raised.
@@ -206,10 +211,10 @@ def generate(topics: list[TopicResult], env: Environment, results_dir: Path, *, 
     result = GenerateResult()
     for topic in topics:
         tid = topic.topic.id
-        payload = build_payload(topic, env, results_dir)
+        payload = build_payload(topic, env, results_dir, llm)
         if not payload["scenarios"]:
             continue
-        cache = cache_dir / f"{tid}-{payload_hash(payload, model)}.json"
+        cache = cache_dir / f"{tid}-{payload_hash(payload, llm.model)}.json"
         if cache.is_file() and not refresh and (hit := _read_cache(cache)):
             result.commentary[tid] = _to_commentary(topic, hit[0], hit[2], hit[1], True)
             if progress:
@@ -217,12 +222,12 @@ def generate(topics: list[TopicResult], env: Environment, results_dir: Path, *, 
             continue
 
         answer, used, error = None, None, None
-        for candidate in dict.fromkeys((model, *fallback_models)):     # keep order, drop duplicates
+        for candidate in llm.models:                                  # main model, then the fallbacks
             if progress:
                 progress(tid, f"request:{candidate}")
             try:
-                client = client or make_client(api_key)
-                answer, used = ask(client, candidate, payload, sleep=sleep), candidate
+                client = client or make_client(llm)
+                answer, used = ask(client, llm, candidate, payload, sleep=sleep), candidate
                 break
             except Exception as exc:
                 error = f"{candidate}: {type(exc).__name__}: {str(exc)[:240]}"
@@ -249,12 +254,12 @@ def generate(topics: list[TopicResult], env: Environment, results_dir: Path, *, 
     return result
 
 
-def check_key(api_key: str, model: str, client=None) -> str:
-    """Check that the key can GENERATE with this model. models.get alone is not enough: a model retired for
-    new users is still listed but refuses generate_content. One tiny request."""
+def check_key(llm: GeminiConfig, client=None) -> str:
+    """Check that the key can GENERATE with the main model. models.get alone is not enough: a model retired
+    for new users is still listed but refuses generate_content. One tiny request."""
     from google.genai import types
-    client = client or make_client(api_key)
-    info = client.models.get(model=model)
-    client.models.generate_content(model=model, contents="Trả lời đúng một chữ: OK",
-                                   config=types.GenerateContentConfig(max_output_tokens=64))
-    return getattr(info, "display_name", None) or model
+    client = client or make_client(llm)
+    info = client.models.get(model=llm.model)
+    client.models.generate_content(model=llm.model, contents=PING_PROMPT,
+                                   config=types.GenerateContentConfig(max_output_tokens=PING_MAX_TOKENS))
+    return getattr(info, "display_name", None) or llm.model

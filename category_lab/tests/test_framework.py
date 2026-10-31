@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from lab.config import load_config
+from dataclasses import replace
+
+from lab.config import ENV_FILES, load_config
 from lab.framework import registry, runner
 from lab.framework.bench import loop_batch, summarize
 
@@ -115,7 +117,7 @@ class FakeRedis(FakeConn):
 
 def test_runner_statuses_and_json(topics_dir, tmp_path):
     cfg = load_config("local", environ={"DB_HOST": "h", "MIGRATOR_PASSWORD": "p"},
-                      backend_env=tmp_path / "none", lab_env=tmp_path / "none")
+                      files=replace(ENV_FILES, backend=tmp_path / "none", lab=tmp_path / "none"))
     conns = runner.Connections(cfg, sql_factory=FakeConn, redis_factory=FakeRedis)
     topics = registry.discover(topics_dir)
 
@@ -138,7 +140,7 @@ def test_runner_statuses_and_json(topics_dir, tmp_path):
 
 def test_runner_reports_unreachable_dbms(topics_dir, tmp_path):
     cfg = load_config("local", environ={"DB_HOST": "h", "MIGRATOR_PASSWORD": "p"},
-                      backend_env=tmp_path / "none", lab_env=tmp_path / "none")
+                      files=replace(ENV_FILES, backend=tmp_path / "none", lab=tmp_path / "none"))
 
     def broken():
         raise ConnectionError("no route")
