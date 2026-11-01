@@ -1,0 +1,69 @@
+# Shared settings. Secrets and hosts come from the single settings file novelle/.env (imported below,
+# path relative to novelle_backend/, the directory mvnw is run from) or from real environment variables.
+spring:
+  application:
+    name: novelle-backend
+  config:
+    import: optional:file:../.env[.properties]
+  profiles:
+    default: local
+
+  datasource:
+    url: jdbc:sqlserver://${DB_HOST}:${DB_PORT:1433};databaseName=${DB_NAME:NovelleDB};encrypt=true;trustServerCertificate=true;applicationName=novelle-backend
+    username: ${DB_APP_USER:novelle_app}
+    password: ${APP_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 15000
+
+  data:
+    redis:
+      repositories:
+        enabled: false               # Redis is used through RedisTemplate, not Spring Data repositories
+
+  session:
+    redis:
+      repository-type: default       # non-indexed: no keyspace notifications needed
+      namespace: spring:session
+    timeout: 7d
+
+  jackson:
+    time-zone: UTC
+    default-property-inclusion: non_null
+
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    session:
+      cookie:
+        name: SESSION
+        http-only: true
+        same-site: lax
+
+mybatis:
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.novelle
+  type-handlers-package: com.novelle.common.mybatis
+  configuration:
+    map-underscore-to-camel-case: false   # columns are PascalCase; auto-mapping is case-insensitive
+    default-statement-timeout: 30
+    jdbc-type-for-null: NULL
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+app:
+  cors:
+    allowed-origins: ${APP_CORS_ORIGINS:http://localhost:5173}
