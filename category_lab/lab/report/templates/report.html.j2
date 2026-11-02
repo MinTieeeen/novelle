@@ -6,11 +6,7 @@
 <title>{{ topic.title }} · Novelle DBMS Lab</title>
 <style>{{ css }}</style>
 </head>
-<body class="viz-root" data-topic="{{ topic.id }}">
-<div class="edit-hint" role="note">
-  Report đang ở chế độ chỉ xem. Để nhập nhận xét, nhờ Gemini gợi ý và lưu vào <code>NOTES.md</code>, mở report bằng
-  <code>uv run lab serve</code> (trong Docker: <code>docker compose --profile lab run --rm --service-ports lab uv run lab serve</code>).
-</div>
+<body class="viz-root">
 <header class="page-head">
   <div>
     <p class="eyebrow">Novelle DBMS Lab · Báo cáo topic · SQL Server và Redis</p>
@@ -180,13 +176,6 @@
   </div>
   {% endif %}
 
-  <div class="card" id="comment-topic-{{ topic.id }}">
-    <h3>Nhận xét chung của nhóm</h3>
-    <p class="small">Kết luận cho cả topic, trả lời các câu hỏi nghiên cứu. Được lưu vào <code>NOTES.md</code> cùng nhận xét của từng scenario.</p>
-    {% set cid = "_topic" %}{% set ctext = tv.topic_comment %}{% set clabel = "Nhận xét chung" %}
-    {% include "_comment.html.j2" %}
-  </div>
-
   <div class="card ai" id="ai-{{ topic.id }}">
     <h3>Nhận xét so sánh SQL Server và Redis <span class="badge">AI · Gemini</span></h3>
     {% if tv.commentary %}
@@ -232,10 +221,6 @@
 <footer class="page-foot">
   Novelle DBMS Lab · <code>uv run lab report {{ topic.id }}</code> · số liệu gốc trong <code>category_lab/results/</code>
 </footer>
-<div class="edit-bar" hidden>
-  <span class="edit-bar-status" aria-live="polite">Chưa có thay đổi</span>
-  <button type="button" class="save-notes" disabled>Lưu vào NOTES.md</button>
-</div>
 <div class="tooltip" role="tooltip" hidden></div>
 <script>{{ js }}</script>
 </body>

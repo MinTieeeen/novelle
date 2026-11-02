@@ -53,14 +53,12 @@
 </section>
 {% endif %}
 
+{% if s.observations %}
 <section class="detail-sec">
   <h5>Nhận xét của thành viên</h5>
-  {% if s.observations %}
-  <div class="observe" title="Ghi bằng ctx.observe(...) trong scenario">{% for o in s.observations %}<p>{{ o }}</p>{% endfor %}</div>
-  {% endif %}
-  {% set cid = s.id %}{% set ctext = sv.comment %}{% set clabel = "Nhận xét cho " ~ dbms_name[s.dbms] %}
-  {% include "_comment.html.j2" %}
+  <div class="observe">{% for o in s.observations %}<p>{{ o }}</p>{% endfor %}</div>
 </section>
+{% endif %}
 
 {% if sv.extra_metrics %}
 <section class="detail-sec">

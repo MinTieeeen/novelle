@@ -1,8 +1,7 @@
 """Chooses the client module of the configured LLM provider, so the CLI and `lab check` never name one.
 
-Every client module offers the same functions:
-    generate(topics, env, results_dir, llm, *, refresh, cache_only, progress) -> GenerateResult
-    suggest_comment(topic, env, results_dir, llm, target_id, draft) -> Suggestion(text, model)
+Every client module offers the same two functions:
+    generate(topics, env, results_dir, llm, *, refresh, progress) -> GenerateResult
     check_key(llm) -> str           (model display name; raises when the key or model cannot generate)
 To add a provider: its config (like gemini.py) and registry entry, its client (like gemini_client.py),
 and one branch below. Clients are imported lazily: their SDKs are only needed by `lab report`/`lab check`.

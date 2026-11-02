@@ -22,13 +22,12 @@ from markupsafe import Markup
 
 from lab.framework import compare
 from lab.framework.result import Artifact, Metric, ScenarioResult, TopicResult
-from lab.report import charts, notes
+from lab.report import charts
 from lab.report.loader import LoadedReport
 
 HERE = Path(__file__).parent
 REPORTS_SUBDIR = "reports"                 # topics/<folder>/reports/
 LATEST_NAME = "latest.html"
-NOTES_NAME = "NOTES.md"
 REPORT_TZ = timezone(timedelta(hours=7), "GMT+7")   # times are shown in Vietnam time
 MAX_EMBED_BYTES = 200_000
 STATUS = {  # icon + label: a status colour never carries meaning alone
@@ -54,7 +53,6 @@ class ScenarioView:
     extra_metrics: list[Metric]   # everything except server_ms
     artifacts: list[ArtifactView] = field(default_factory=list)
     timings: list[Metric] = field(default_factory=list)   # server_ms variants, for the tab's timing table
-    comment: str = ""                                     # the author's comment saved in NOTES.md
     ai_comment: str | None = None                          # Gemini's comment on this scenario
 
 
@@ -90,7 +88,6 @@ class TopicView:
     summary: list[dict[str, Any]]
     commentary: Any = None        # Commentary of the topic (lab/llm)
     ai_error: str | None = None
-    topic_comment: str = ""       # the author's topic-wide comment saved in NOTES.md
 
 
 def _artifact(a: Artifact, results_dir: Path, report_dir: Path) -> ArtifactView:
@@ -103,14 +100,13 @@ def _artifact(a: Artifact, results_dir: Path, report_dir: Path) -> ArtifactView:
 
 
 def _scenario(s: ScenarioResult | None, results_dir: Path, report_dir: Path,
-              comments: dict[str, str] | None = None, saved: dict[str, str] | None = None) -> ScenarioView | None:
+              comments: dict[str, str] | None = None) -> ScenarioView | None:
     if s is None:
         return None
     icon, label, css = STATUS[s.status]
     return ScenarioView(s, icon, label, css, [m for m in s.metrics if m.name != "server_ms"],
                         [_artifact(a, results_dir, report_dir) for a in s.artifacts],
-                        timings=[m for m in s.metrics if m.name == "server_ms"],
-                        ai_comment=(comments or {}).get(s.id), comment=(saved or {}).get(s.id, ""))
+                        [m for m in s.metrics if m.name == "server_ms"], (comments or {}).get(s.id))
 
 
 def _stats(t: TopicResult, pairs: int) -> TopicStats:
@@ -136,9 +132,7 @@ def _summary(pairs: list[compare.Pair]) -> list[dict[str, Any]]:
 
 
 def _topic(t: TopicResult, results_dir: Path, report_dir: Path, commentary: dict | None,
-           ai_errors: dict | None, notes_text: str) -> TopicView:
-    """notes_text: the topic's NOTES.md as it is now (falls back to the copy saved with the run)."""
-    saved = notes.read_comments(notes_text)
+           ai_errors: dict | None) -> TopicView:
     c = (commentary or {}).get(t.topic.id)
     comments = c.by_scenario if c else {}
     pairs, unpaired = compare.build_pairs(t)
@@ -147,13 +141,11 @@ def _topic(t: TopicResult, results_dir: Path, report_dir: Path, commentary: dict
         bars = [charts.Bar("sqlserver", m) for m in p.timings("sqlserver")] + \
                [charts.Bar("redis", m) for m in p.timings("redis")]
         views.append(PairView(p, charts.timing_chart(bars, p.title), [(b.dbms, b.metric) for b in bars],
-                              _scenario(p.sql, results_dir, report_dir, comments, saved),
-                              _scenario(p.redis, results_dir, report_dir, comments, saved)))
-    own_text = notes.strip_block(notes_text)
-    notes_html = Markup(markdown.markdown(own_text, extensions=["tables", "fenced_code"])) if own_text else Markup("")
-    return TopicView(t, views, [_scenario(s, results_dir, report_dir, comments, saved) for s in unpaired],
-                     notes_html, _stats(t, len(pairs)), _summary(pairs), c, (ai_errors or {}).get(t.topic.id),
-                     saved.get(notes.TOPIC_COMMENT_ID, ""))
+                              _scenario(p.sql, results_dir, report_dir, comments),
+                              _scenario(p.redis, results_dir, report_dir, comments)))
+    notes = Markup(markdown.markdown(t.topic.notes_md, extensions=["tables", "fenced_code"])) if t.topic.notes_md else Markup("")
+    return TopicView(t, views, [_scenario(s, results_dir, report_dir, comments) for s in unpaired], notes,
+                     _stats(t, len(pairs)), _summary(pairs), c, (ai_errors or {}).get(t.topic.id))
 
 
 def _local_time(value: datetime) -> str:
@@ -161,16 +153,14 @@ def _local_time(value: datetime) -> str:
 
 
 def render(loaded: LoadedReport, out: Path, commentary: dict | None = None, ai_errors: dict | None = None,
-           ai_note: str = "", notes_text: str | None = None) -> str:
-    """HTML of the report of loaded.topic. `out` is where the file will be written (for relative links).
-    notes_text is the topic's current NOTES.md; None uses the copy saved with the run."""
+           ai_note: str = "") -> str:
+    """HTML of the report of loaded.topic. `out` is where the file will be written (for relative links)."""
     env = Environment(loader=FileSystemLoader(HERE / "templates"), autoescape=select_autoescape(["html", "j2"]),
                       trim_blocks=True, lstrip_blocks=True)
     env.filters["ms"] = charts.fmt_ms
     env.filters["value"] = charts.fmt_value
     env.filters["local_time"] = _local_time
-    text = loaded.topic.topic.notes_md if notes_text is None else notes_text
-    tv = _topic(loaded.topic, loaded.results_dir, out.parent, commentary, ai_errors, text)
+    tv = _topic(loaded.topic, loaded.results_dir, out.parent, commentary, ai_errors)
     return env.get_template("report.html.j2").render(
         tv=tv, topic=tv.t.topic, env=loaded.result.environment, runs=loaded.runs, status=STATUS,
         dbms_name=charts.DBMS_NAME, generated_at=datetime.now(timezone.utc),
@@ -187,9 +177,7 @@ def build(loaded: LoadedReport, topic_dir: Path, commentary: dict | None = None,
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(REPORT_TZ).strftime("%Y%m%d-%H%M%S")
     out = out_dir / f"{stamp}-{loaded.result.environment.target}.html"
-    notes_path = topic_dir / NOTES_NAME
-    html = render(loaded, out, commentary, ai_errors, ai_note,
-                  notes_path.read_text(encoding="utf-8") if notes_path.is_file() else None)
+    html = render(loaded, out, commentary, ai_errors, ai_note)
     out.write_text(html, encoding="utf-8")
     (out_dir / LATEST_NAME).write_text(html, encoding="utf-8")       # same folder: relative links still work
     return out

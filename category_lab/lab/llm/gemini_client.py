@@ -25,7 +25,6 @@ from typing import Any, Callable
 from pydantic import BaseModel, Field, ValidationError
 
 from lab.llm.gemini import GeminiConfig
-from lab.report.notes import TOPIC_COMMENT_ID   # id of the topic-wide comment
 from lab.framework.result import Environment, Metric, ScenarioResult, TopicResult
 
 PROMPT_VERSION = "2"
@@ -44,6 +43,7 @@ SKIP_REASON = {QUOTA_EXHAUSTED: "hết quota", MODEL_UNAVAILABLE: "model không 
 PROMPT_FILE = Path(__file__).parent / "prompts" / "commentary.md"
 SUGGEST_PROMPT_FILE = Path(__file__).parent / "prompts" / "suggest.md"
 SUGGEST_HEADER = "Yêu cầu viết nhận xét (JSON):\n"
+TOPIC_COMMENT_ID = "_topic"          # id of the topic-wide comment (the others are scenario ids)
 
 
 def system_prompt() -> str:
@@ -154,11 +154,10 @@ def payload_hash(payload: dict[str, Any], model: str) -> str:
 
 
 # --- calling Gemini -------------------------------------------------------------------------------------
-def make_client(llm: GeminiConfig, timeout_s: float | None = None):
+def make_client(llm: GeminiConfig):
     from google import genai
     from google.genai import types
-    seconds = llm.timeout_s if timeout_s is None else timeout_s
-    return genai.Client(api_key=llm.api_key, http_options=types.HttpOptions(timeout=int(seconds * 1000)))
+    return genai.Client(api_key=llm.api_key, http_options=types.HttpOptions(timeout=int(llm.timeout_s * 1000)))
 
 
 def _status_code(exc: Exception) -> int | None:
@@ -286,23 +285,30 @@ class Suggestion:
     model: str
 
 
-def _generate_text(client, llm: GeminiConfig, model: str, system: str, contents: str) -> str:
-    """One plain-text request, no retry: someone is waiting on a button, so a slow or overloaded model is
-    skipped for the next one instead (suggest_comment)."""
+def _generate_text(client, llm: GeminiConfig, model: str, system: str, contents: str,
+                   sleep: Callable[[float], None]) -> str:
+    """Plain-text generation with the same retry rule as ask(): only overloaded (5xx) answers are retried."""
     from google.genai import types
     config = types.GenerateContentConfig(system_instruction=system, temperature=llm.temperature)
-    response = client.models.generate_content(model=model, contents=contents, config=config)
-    if not response.text:
-        raise RuntimeError("Gemini trả về rỗng (có thể bị chặn bởi bộ lọc an toàn)")
-    return response.text.strip()
+    delays = llm.retry_delays_s
+    for attempt in range(len(delays) + 1):
+        try:
+            response = client.models.generate_content(model=model, contents=contents, config=config)
+            if not response.text:
+                raise RuntimeError("Gemini trả về rỗng (có thể bị chặn bởi bộ lọc an toàn)")
+            return response.text.strip()
+        except Exception as exc:
+            if _status_code(exc) not in OVERLOADED or attempt == len(delays):
+                raise
+            sleep(delays[attempt])
+    raise RuntimeError("unreachable")
 
 
 def suggest_comment(topic: TopicResult, env: Environment, results_dir: Path, llm: GeminiConfig, target_id: str,
-                    draft: str = "", *, client=None) -> Suggestion:
+                    draft: str = "", *, client=None, sleep: Callable[[float], None] = time.sleep) -> Suggestion:
     """A suggested comment for one scenario (target_id = scenario id) or for the whole topic
     (target_id = TOPIC_COMMENT_ID), written from the topic's results; `draft` is improved when given.
-    Interactive, so fast: each model gets one request with llm.suggest_timeout_s; a used-up, unavailable,
-    overloaded or timed-out model is skipped for the next one at once."""
+    Models are tried in order; a used-up or unavailable model is skipped at once."""
     known = {s.id for s in topic.scenarios}
     if target_id != TOPIC_COMMENT_ID and target_id not in known:
         raise ValueError(f"unknown scenario '{target_id}'")
@@ -311,17 +317,16 @@ def suggest_comment(topic: TopicResult, env: Environment, results_dir: Path, llm
                "data": build_payload(topic, env, results_dir, llm)}
     contents = SUGGEST_HEADER + json.dumps(request, ensure_ascii=False, indent=1)
     system = SUGGEST_PROMPT_FILE.read_text(encoding="utf-8")
-    client = client or make_client(llm, llm.suggest_timeout_s)
+    client = client or make_client(llm)
     errors = []
     for model in llm.models:
         try:
-            return Suggestion(_generate_text(client, llm, model, system, contents), model)
+            return Suggestion(_generate_text(client, llm, model, system, contents, sleep), model)
         except Exception as exc:
             code = _status_code(exc)
-            reason = SKIP_REASON.get(code) or f"{type(exc).__name__}" + (f" {code}" if code else "")
-            errors.append(f"{model}: {reason}")
-            if code is not None and code not in SWITCH_NOW and code not in OVERLOADED:
-                break                       # bad key / bad request; timeouts (no code) try the next model
+            errors.append(f"{model}: {SKIP_REASON.get(code, f'{type(exc).__name__} {code or ''}'.strip())}")
+            if code not in SWITCH_NOW and code not in OVERLOADED:
+                break
     raise RuntimeError("không tạo được gợi ý: " + "; ".join(errors))
 
 

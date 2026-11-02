@@ -24,7 +24,7 @@ from lab.env import ConfigError, EnvFiles, EnvSource
 from lab.llm import LLMConfig, llm_from_env
 
 __all__ = ["ConfigError", "EnvFiles", "EnvSource", "ENV_FILES", "EnvKey", "LAB_DIR", "LabConfig",
-           "RedisConfig", "RedisEnvKeys", "ServeConfig", "SqlServerConfig", "TARGETS", "Target", "load_config", "mask"]
+           "RedisConfig", "RedisEnvKeys", "SqlServerConfig", "TARGETS", "Target", "load_config", "mask"]
 
 LAB_DIR = Path(__file__).resolve().parent.parent          # novelle/category_lab
 
@@ -46,9 +46,6 @@ class EnvKey(StrEnum):
     ODBC_DRIVER = "LAB_ODBC_DRIVER"
     SQL_LOGIN_TIMEOUT_S = "LAB_SQL_LOGIN_TIMEOUT_S"
     SQL_APP_NAME = "LAB_SQL_APP_NAME"
-    SERVE_HOST = "LAB_SERVE_HOST"
-    SERVE_PORT = "LAB_SERVE_PORT"
-    MAX_COMMENT_CHARS = "LAB_MAX_COMMENT_CHARS"
 
 
 # Which variable of novelle/.env holds the password of each login (see 01_create_logins_users.sql).
@@ -127,25 +124,11 @@ class RedisConfig:
 
 
 @dataclass(frozen=True)
-class ServeConfig:
-    """`lab serve`: where the local report server listens, and the longest comment it accepts."""
-    host: str
-    port: int
-    max_comment_chars: int
-
-    @classmethod
-    def from_env(cls, env: EnvSource) -> "ServeConfig":
-        return cls(host=env.text(EnvKey.SERVE_HOST), port=env.integer(EnvKey.SERVE_PORT),
-                   max_comment_chars=env.integer(EnvKey.MAX_COMMENT_CHARS))
-
-
-@dataclass(frozen=True)
 class LabConfig:
     target: Target
     sql: SqlServerConfig
     redis: RedisConfig
     llm: LLMConfig
-    serve: ServeConfig
     sources: tuple[str, ...]        # .env files that were found, for `lab config`
 
 
@@ -157,7 +140,7 @@ def load_config(target: str | None = None, environ: Mapping[str, str] | None = N
         raise ConfigError(f"Unknown target '{chosen}', expected one of: {', '.join(TARGETS)}")
     return LabConfig(target=chosen, sql=SqlServerConfig.from_env(env),  # type: ignore[arg-type]
                      redis=RedisConfig.from_env(env, chosen),             # type: ignore[arg-type]
-                     llm=llm_from_env(env), serve=ServeConfig.from_env(env), sources=env.files)
+                     llm=llm_from_env(env), sources=env.files)
 
 
 def mask(secret: str | None) -> str:

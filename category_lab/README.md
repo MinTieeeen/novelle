@@ -106,7 +106,7 @@ The terminal shows the result of every scenario (`passed` / `failed` / `error` /
 
 ### Step 5: Write `NOTES.md`
 
-Goals, method and references. The file is included verbatim in the report. The comments on each scenario and the topic conclusion are easier to write in the report itself (step 7), which saves them into this file.
+Goals, method, conclusions and references. The file is included verbatim in the report.
 
 ### Step 6: Build the report
 
@@ -125,23 +125,7 @@ topics/t5_concurrency/reports/
 
 It uses the **newest result of every scenario** of the topic: re-running one DBMS or one scenario keeps the results of the others. Only runs against the current Redis target are used. Section 6 describes the content.
 
-### Step 7: Write the comments in the report
-
-A report opened as a file is read-only. To type comments, let Gemini suggest them and save them, open the report through the local server instead. From the `novelle/` folder:
-
-```bash
-docker compose --profile lab run --rm --service-ports lab uv run lab serve concurrency
-```
-
-Then open `http://localhost:8765/topic/concurrency` in a browser (the port is `LAB_SERVE_PORT`; `--service-ports` is required for the browser to reach the container).
-
-- Every scenario tab has a **comment box**, and the end of the topic has a box for the **overall conclusion**.
-- **✦ Gợi ý bằng Gemini** writes a suggestion from the topic's results into the box; text already in the box is used as a draft and improved. The suggestion must be read and corrected before saving.
-- **Lưu vào NOTES.md** (bar at the bottom of the page) writes every comment into the topic's `NOTES.md` and refreshes `reports/latest.html`. The page warns before closing with unsaved changes.
-- The comments are stored in a separate block of `NOTES.md`, between `<!-- lab:comments:start -->` and `<!-- lab:comments:end -->`. The rest of the file is never changed. Text between the `<!-- lab:comment id=... -->` markers can also be edited by hand; the report shows it the next time.
-- Stop the server with Ctrl+C.
-
-### Step 8: Clean up (when needed)
+### Step 7: Clean up (when needed)
 
 Temporary tables and keys are removed after every run. After a run with `--keep`, or a run that was interrupted, remove them with:
 
@@ -333,7 +317,6 @@ uv run lab report concurrency --refresh-llm   # ask the AI to write the commenta
 | `uv run lab scaffold t<number>_<id> --owner "Name" [--title "Topic title"]` | Creates a new topic folder |
 | `uv run lab run <topic \| all> [--dbms sqlserver\|redis] [-s "<id pattern>"] [-n <runs>] [--target aws] [--keep] [--allow-destructive]` | Runs scenarios, prints the results and saves them under `results/` |
 | `uv run lab report [topic \| all] [--run <runId>] [--target aws] [--open] [--no-llm] [--refresh-llm]` | Builds the HTML report of each topic into `topics/<folder>/reports/` |
-| `uv run lab serve [topic \| all] [--target aws] [--port <n>]` | Serves the reports with editable comments, Gemini suggestions and saving to `NOTES.md` (Docker: `run --rm --service-ports lab ...`) |
 | `uv run lab clean <topic \| all>` | Removes leftover `lab.<topic>__*` tables and `lab:<topic>:*` keys |
 
 Append `--help` to any command for all of its options.
@@ -349,7 +332,4 @@ Append `--help` to any command for all of its options.
 | `no Redis command was recorded` | The function passed to `bench_redis` does not use the client `r` it receives |
 | A scenario is `skipped` | It does not support the current target, or it needs `--allow-destructive` |
 | AI commentary is empty or shows an error | `GEMINI_API_KEY` is missing, or every model has used up its daily quota; the report is still built, run it again later |
-| `http://localhost:8765` does not open | `lab serve` was started without `--service-ports`, or the port is taken (change `LAB_SERVE_PORT`) |
-| The comment boxes cannot be edited | The report was opened as a file; open it through `lab serve` |
-| "Không tạo được gợi ý" | Every model is out of quota or overloaded right now; try again later or write the comment by hand |
 | A `docker ... sh -c '..."..."...'` command fails in PowerShell | Open a shell in the container (`... run --rm lab bash`) and run the command there |

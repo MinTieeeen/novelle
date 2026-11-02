@@ -40,8 +40,6 @@ class LLMEnvKeys:
     def timeout_s(self) -> str: return self._key("TIMEOUT_S")
     @property
     def retry_delays_s(self) -> str: return self._key("RETRY_DELAYS_S")
-    @property
-    def suggest_timeout_s(self) -> str: return self._key("SUGGEST_TIMEOUT_S")
 
 
 @dataclass(frozen=True)
@@ -58,7 +56,6 @@ class LLMConfig(ABC):
     temperature: float
     timeout_s: float
     retry_delays_s: tuple[float, ...]       # waits between retries of an overloaded model (429/5xx)
-    suggest_timeout_s: float                # per request for interactive suggestions (lab serve): no retries
     max_statement_chars: int
     max_plan_chars: int
 
@@ -77,7 +74,6 @@ class LLMConfig(ABC):
         return cls(api_key=env.optional(keys.api_key), model=env.text(keys.model),
                    fallback_models=env.items(keys.fallback_models), temperature=env.decimal(keys.temperature),
                    timeout_s=env.decimal(keys.timeout_s), retry_delays_s=env.decimals(keys.retry_delays_s),
-                   suggest_timeout_s=env.decimal(keys.suggest_timeout_s),
                    max_statement_chars=env.integer(LLMKey.MAX_STATEMENT_CHARS),
                    max_plan_chars=env.integer(LLMKey.MAX_PLAN_CHARS))
 
