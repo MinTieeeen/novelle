@@ -43,7 +43,7 @@ server:
 mybatis:
   mapper-locations: classpath:mapper/**/*.xml
   type-aliases-package: com.novelle
-  type-handlers-package: com.novelle.common.mybatis
+  type-handlers-package: com.novelle.infrastructure.mybatis
   configuration:
     map-underscore-to-camel-case: false   # columns are PascalCase; auto-mapping is case-insensitive
     default-statement-timeout: 30

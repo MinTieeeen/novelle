@@ -28,26 +28,26 @@ Swagger UI: http://localhost:8080/swagger-ui.html. Health: `/actuator/health`.
 
 ## Code layout
 
-Package `com.novelle`, organised **by feature**. Each feature package has `controller/`, `service/`, `mapper/` (MyBatis `@Mapper` interfaces), `dto/` (request/response records) and `model/` (row objects); its SQL is in `src/main/resources/mapper/<feature>/*Mapper.xml`.
+Package `com.novelle`, organised **by layer**. Each layer package is flat and holds the classes of every feature; class names carry the feature (`AuthController`, `StoryService`, `ChapterMapper`). Technical building blocks that are not part of a layer live under `infrastructure/`. All MyBatis XML is in `src/main/resources/mapper/*Mapper.xml`, one file per mapper interface with the same name.
 
 | Package | Content |
 |---|---|
-| `auth` | Register (always READER), login (BCrypt), logout, `/api/me`, `UserStatusFilter` |
-| `user` | `AppUser`, profile and avatar |
-| `catalog` | Genres and tags (cached) |
-| `story` | F1–F3: home, search, story detail, author page (reads `vw_PublicStory`) |
-| `reading` | F4: chapter reading, view counting, reading progress |
-| `library` | F5: history, follows, reading lists |
-| `rating` | F6: ratings and reviews |
-| `authorrequest` | F7: submit/cancel; approve/reject service shared with admin |
-| `studio` | F8–F10: stories, volumes, chapters, drafts, revisions, dashboard |
-| `admin` | F11–F13: users, author requests, moderation, catalog, statistics |
-| `config` | Security, Redis, session, CORS, scheduling, OpenAPI, MyBatis |
-| `common`, `common.mybatis` | `ApiError`, `GlobalExceptionHandler`, paging, `CurrentUser`, `HtmlSanitizer`; type handlers (`ROWVERSION` ↔ Base64, TVP for `sp_FlushViews`) |
-| `cache` | `CacheService.getOrLoad/evict`, all keys in `CacheKeys` |
-| `views` | `ViewCounterService` (Redis INCR), `ViewFlushJob` (every 60 s → `sp_FlushViews`) |
-| `ratelimit` | `@RateLimited` + Redis fixed-window interceptor |
-| `jobs` | `ScheduledPublishJob` (`sp_PublishScheduled`); replaces SQL Agent, which RDS Express lacks |
+| `controller` | REST controllers: Bean Validation on request DTOs, HTTP ↔ service mapping only (`AuthController`, `MeController`, `StoryController`, `StudioChapterController`, `AdminUserController`, …) |
+| `service` | Business rules RB1–RB16, ownership checks, `@Transactional`, cache eviction (`AuthService`, `ProfileService`, `StoryService`, …) |
+| `mapper` | MyBatis `@Mapper` interfaces (`AuthMapper`, `UserMapper`, `StoryMapper`, …) |
+| `model` | Row objects mapped from SQL Server (`AppUser`, `Story`, `Chapter`, …) |
+| `dto` | Request/response records (`*Request`, `*Response`, paging records) |
+| `exception` | `ApiError`, `ApiException`, `ErrorCode`, `GlobalExceptionHandler` |
+| `config` | Security, Redis, session, CORS, scheduling, OpenAPI, MyBatis, Web MVC |
+| `infrastructure.security` | `SessionUser`, `CurrentUser`, `UserStatusFilter`, JSON 401/403 handlers |
+| `infrastructure.mybatis` | Type handlers (`ROWVERSION` ↔ Base64, TVP for `sp_FlushViews`) |
+| `infrastructure.cache` | `CacheService.getOrLoad/evict`, all keys in `CacheKeys` |
+| `infrastructure.ratelimit` | `@RateLimited` + Redis fixed-window interceptor |
+| `infrastructure.views` | `ViewCounterService` (Redis INCR), `ViewFlushJob` (every 60 s → `sp_FlushViews`) |
+| `infrastructure.jobs` | `ScheduledPublishJob` (`sp_PublishScheduled`); replaces SQL Agent, which RDS Express lacks |
+| `infrastructure.html` | `HtmlSanitizer` (jsoup allowlist for chapter content) |
+
+Feature → main classes: auth/account (`AuthController`, `MeController`, `UserController`), F1–F3 story, F4 reading, F5 library, F6 rating, F7 author request, F8–F10 studio (`Studio*`), F11–F13 admin (`Admin*`).
 
 Request flow: Security filters (session from Redis, CSRF cookie `XSRF-TOKEN` + header `X-XSRF-TOKEN`, `UserStatusFilter`, role rules) → `RateLimitInterceptor` → controller (Bean Validation) → service (business rules RB1–RB16, `@Transactional`, cache) → mapper → SQL Server. Errors → `GlobalExceptionHandler` → `ApiError { status, code, message, details }`.
 

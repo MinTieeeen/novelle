@@ -1,2 +1,2 @@
 /** ViewCounterService (Redis INCR) and ViewFlushJob (sp_FlushViews). */
-package com.novelle.views;
+package com.novelle.infrastructure.views;

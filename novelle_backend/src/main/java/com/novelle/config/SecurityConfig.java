@@ -19,7 +19,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * Session-cookie security for the SPA: the session lives in Redis (Spring Session), CSRF uses the
- * XSRF-TOKEN cookie + X-XSRF-TOKEN header. UserStatusFilter (auth package) is added here later.
+ * XSRF-TOKEN cookie + X-XSRF-TOKEN header. UserStatusFilter (infrastructure.security) is added here later.
  */
 @Configuration
 public class SecurityConfig {
