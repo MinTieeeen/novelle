@@ -65,6 +65,10 @@ pre { font: 12.5px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; back
         display: flex; flex-direction: column; gap: 2px; }
 .tile-label { color: var(--text-secondary); font-size: 13.5px; }
 .tile-value { font-size: 28px; font-weight: 600; }
+.tile-sub { color: var(--text-secondary); font-size: 12.5px; }
+.tile-sub .sw { width: 9px; height: 9px; margin-right: 3px; }
+.nowrap { white-space: nowrap; }
+.section-title { font-size: 22px; margin: 36px 0 4px; padding-bottom: 8px; border-bottom: 1px solid var(--axis); }
 
 .st { display: inline-block; width: 1.1em; text-align: center; font-weight: 700; }
 .st.good { color: var(--good); } .st.critical { color: var(--critical); } .st.muted { color: var(--text-muted); }
