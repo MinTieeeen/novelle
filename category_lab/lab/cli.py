@@ -189,60 +189,67 @@ def clean(topic: str = typer.Argument(..., help="id topic, hoặc 'all' để xo
 
 
 @app.command()
-def report(run_id: str = typer.Argument("latest", help="runId trong results/, hoặc 'latest'."),
-           latest_per_topic: bool = typer.Option(False, "--latest-per-topic", "-a",
-                                                 help="Gộp kết quả mới nhất của mọi scenario, mọi topic "
-                                                      "thành một report (dùng cho báo cáo chung của nhóm)."),
-           target: str | None = typer.Option(None, "--target", "-t",
-                                             help="Khi gộp: chỉ lấy các lần chạy với Redis target này."),
-           out: Path | None = typer.Option(None, "--out", "-o", help="Đường dẫn file HTML (mặc định reports/)."),
+def report(topic: str = typer.Argument("all", help="id topic (vd. concurrency) hoặc 'all' (mỗi topic một report)."),
+           run_id: str | None = typer.Option(None, "--run", "-r",
+                                             help="Chỉ dùng một lần chạy (tên thư mục trong results/). Mặc định: "
+                                                  "kết quả mới nhất của từng scenario."),
+           target: str | None = TargetOption,
            open_: bool = typer.Option(False, "--open", help="Mở report bằng trình duyệt sau khi tạo."),
-           llm: bool = typer.Option(True, "--llm/--no-llm", help="Thêm nhận xét của Gemini (cần GEMINI_API_KEY)."),
+           llm: bool = typer.Option(True, "--llm/--no-llm", help="Thêm nhận xét AI (cần API key trong novelle/.env)."),
            refresh_llm: bool = typer.Option(False, "--refresh-llm",
-                                            help="Hỏi lại Gemini dù kết quả không đổi (bỏ qua cache).")) -> None:
-    """Tạo report HTML (một file, mở offline) từ kết quả trong results/."""
-    from lab.report import builder, loader   # imported here so `lab run` stays light
+                                            help="Hỏi lại AI dù kết quả không đổi (bỏ qua cache).")) -> None:
+    """Tạo report HTML cho từng topic, ghi vào topics/<folder>/reports/ (kèm latest.html)."""
     from lab.llm.clients import client_for
+    from lab.report import builder, loader   # imported here so `lab run` stays light
 
+    cfg = _load(target)
+    folders = {t.meta.id: t.folder for t in registry.select(_discover(), topic)}
+    if not folders:
+        console.print(f"[yellow]Không có topic nào khớp '{topic}'.[/] Xem `lab list`.")
+        raise typer.Exit(1)
     try:
-        if latest_per_topic:
-            existing = {t.meta.id for t in _discover()}      # skip results of topics deleted since
-            loaded = loader.load_latest_per_scenario(target=target, topics_filter=existing)
-        else:
-            loaded = loader.load(run_id)
+        reports = loader.load_topic_reports(run_id=run_id, target=None if run_id else cfg.target,
+                                            topics_filter=set(folders))
     except FileNotFoundError as exc:
         console.print(f"[bold red]Không tìm thấy kết quả:[/] {exc}")
         raise typer.Exit(1)
-    commentary, ai_errors, ai_note = None, {}, ""
-    if not llm:
-        ai_note = "report tạo với --no-llm"
-    else:
-        cfg = _load(None).llm
-        if not cfg.enabled:
-            ai_note = f"chưa đặt {cfg.env_keys().api_key} trong novelle/.env"
-            console.print(f"[yellow]Bỏ qua nhận xét AI:[/] {ai_note}")
+    if not reports:
+        console.print(f"[yellow]Chưa có kết quả nào của '{topic}' với target {cfg.target}.[/] "
+                      f"Chạy `lab run {topic}` trước.")
+        raise typer.Exit(1)
+
+    llm_cfg = cfg.llm
+    use_llm = llm and llm_cfg.enabled
+    ai_note = "" if use_llm else ("report tạo với --no-llm" if not llm
+                                  else f"chưa đặt {llm_cfg.env_keys().api_key} trong novelle/.env")
+    if llm and not llm_cfg.enabled:
+        console.print(f"[yellow]Bỏ qua nhận xét AI:[/] {ai_note}")
+
+    def progress(topic_id: str, how: str) -> None:
+        kind, _, rest = how.partition(":")
+        if kind == "skip":
+            model, _, why = rest.partition(":")
+            text = f"[yellow]{model} {why}, chuyển sang model kế tiếp[/]"
         else:
-            def progress(topic: str, how: str) -> None:
-                kind, _, rest = how.partition(":")
-                if kind == "skip":
-                    model, _, why = rest.partition(":")
-                    text = f"[yellow]{model} {why}, chuyển sang model kế tiếp[/]"
-                else:
-                    text = {"cache": "dùng cache", "request": f"đang hỏi {rest} ...",
-                            "stale": "[yellow]mọi model đều lỗi, dùng nhận xét của lần trước[/]"}.get(kind, how)
-                console.print(f"  {cfg.display_name} · {topic}: {text}")
-            res = client_for(cfg).generate(loaded.result.topics, loaded.result.environment,
-                                                      loaded.results_dir, cfg, refresh=refresh_llm,
-                                                      progress=progress)
+            text = {"cache": "dùng cache", "request": f"đang hỏi {rest} ...",
+                    "stale": "[yellow]mọi model đều lỗi, dùng nhận xét của lần trước[/]"}.get(kind, how)
+        console.print(f"  {llm_cfg.display_name} · {topic_id}: {text}")
+
+    for loaded in reports:
+        tid = loaded.topic.topic.id
+        commentary, ai_errors = None, {}
+        if use_llm:
+            res = client_for(llm_cfg).generate([loaded.topic], loaded.result.environment, loaded.results_dir,
+                                               llm_cfg, refresh=refresh_llm, progress=progress)
             commentary, ai_errors = res.commentary, res.errors
-            for topic, err in ai_errors.items():
-                console.print(f"  [bold red]{cfg.display_name} · {topic} lỗi:[/] {err}", soft_wrap=True)
-    path = builder.build(loaded, out, commentary, ai_errors, ai_note)
-    n = sum(len(t.scenarios) for t in loaded.result.topics)
-    console.print(f"[green]Đã tạo report[/] ({len(loaded.result.topics)} topic, {n} scenario, "
-                  f"từ {len(loaded.sources)} lần chạy): [cyan]{path.as_posix()}[/]")
-    if open_:
-        webbrowser.open(path.resolve().as_uri())
+            for err in ai_errors.values():
+                console.print(f"  [bold red]{llm_cfg.display_name} · {tid} lỗi:[/] {err}", soft_wrap=True)
+        path = builder.build(loaded, folders[tid], commentary, ai_errors, ai_note)
+        rel = path.relative_to(folders[tid].parent.parent).as_posix()
+        console.print(f"[green]{tid}[/]: {len(loaded.topic.scenarios)} scenario từ {len(loaded.runs)} lần chạy "
+                      f"→ [cyan]{rel}[/] (và {builder.REPORTS_SUBDIR}/{builder.LATEST_NAME})", soft_wrap=True)
+        if open_:
+            webbrowser.open(path.resolve().as_uri())
 
 
 if __name__ == "__main__":

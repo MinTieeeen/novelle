@@ -1,8 +1,9 @@
-"""Builds the HTML report: one self-contained file (CSS, JS and SVG charts inlined) that opens offline,
-prints to PDF and can go into the submission ZIP.
+"""Builds the HTML report of ONE topic: a self-contained file (CSS, JS and SVG charts inlined) that opens
+offline, prints to PDF and can go into the submission ZIP. It is written into the topic's own folder:
 
-    path = build(load("latest"))                  # reports/<runId>.html
-    path = build(load_latest_per_scenario())      # reports/combined-<time>.html
+    for loaded in load_topic_reports(target="local"):
+        build(loaded, TOPICS_DIR / loaded.topic.topic.folder)
+        # -> topics/<folder>/reports/<yyyymmdd-hhmmss>-<target>.html and topics/<folder>/reports/latest.html
 
 `commentary` (phase F5) maps topic id -> gemini.Commentary: per-scenario comments go into the DBMS tabs,
 the SQL Server vs Redis comparison closes the topic. `ai_note` explains a missing commentary.
@@ -11,7 +12,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -19,14 +20,15 @@ import markdown
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
 
-from lab.config import LAB_DIR
 from lab.framework import compare
 from lab.framework.result import Artifact, Metric, ScenarioResult, TopicResult
 from lab.report import charts
 from lab.report.loader import LoadedReport
 
 HERE = Path(__file__).parent
-REPORTS_DIR = LAB_DIR / "reports"
+REPORTS_SUBDIR = "reports"                 # topics/<folder>/reports/
+LATEST_NAME = "latest.html"
+REPORT_TZ = timezone(timedelta(hours=7), "GMT+7")   # times are shown in Vietnam time
 MAX_EMBED_BYTES = 200_000
 STATUS = {  # icon + label: a status colour never carries meaning alone
     "passed": ("✔", "Đạt", "good"), "failed": ("✘", "Không đạt", "critical"),
@@ -64,13 +66,27 @@ class PairView:
 
 
 @dataclass
+class TopicStats:
+    """Numbers for the topic overview."""
+    scenarios: int = 0
+    by_dbms: dict[str, int] = field(default_factory=dict)
+    by_status: dict[str, int] = field(default_factory=dict)
+    pairs: int = 0
+    checks_passed: int = 0
+    checks_total: int = 0
+    metrics: int = 0
+    duration_s: float = 0.0
+
+
+@dataclass
 class TopicView:
     t: TopicResult
     pairs: list[PairView]
     unpaired: list[ScenarioView]
     notes_html: Markup
-    counts: dict[str, int]
-    commentary: Any = None        # gemini.Commentary of the topic
+    stats: TopicStats
+    summary: list[dict[str, Any]]
+    commentary: Any = None        # Commentary of the topic (lab/llm)
     ai_error: str | None = None
 
 
@@ -93,6 +109,28 @@ def _scenario(s: ScenarioResult | None, results_dir: Path, report_dir: Path,
                         [m for m in s.metrics if m.name == "server_ms"], (comments or {}).get(s.id))
 
 
+def _stats(t: TopicResult, pairs: int) -> TopicStats:
+    st = TopicStats(scenarios=len(t.scenarios), pairs=pairs)
+    for s in t.scenarios:
+        st.by_dbms[s.dbms] = st.by_dbms.get(s.dbms, 0) + 1
+        st.by_status[s.status] = st.by_status.get(s.status, 0) + 1
+        st.checks_total += len(s.checks)
+        st.checks_passed += sum(1 for c in s.checks if c.passed)
+        st.metrics += len(s.metrics)
+        st.duration_s += s.duration_s
+    return st
+
+
+def _summary(pairs: list[compare.Pair]) -> list[dict[str, Any]]:
+    rows = []
+    for p in pairs:
+        best = {d: min(p.timings(d), key=lambda m: m.value, default=None) for d in ("sqlserver", "redis")}
+        rows.append({"pair": p, "sql": best["sqlserver"], "redis": best["redis"], "verdict": p.timing_verdict,
+                     "shared": p.shared, "sql_status": p.sql.status if p.sql else None,
+                     "redis_status": p.redis.status if p.redis else None})
+    return rows
+
+
 def _topic(t: TopicResult, results_dir: Path, report_dir: Path, commentary: dict | None,
            ai_errors: dict | None) -> TopicView:
     c = (commentary or {}).get(t.topic.id)
@@ -105,49 +143,41 @@ def _topic(t: TopicResult, results_dir: Path, report_dir: Path, commentary: dict
         views.append(PairView(p, charts.timing_chart(bars, p.title), [(b.dbms, b.metric) for b in bars],
                               _scenario(p.sql, results_dir, report_dir, comments),
                               _scenario(p.redis, results_dir, report_dir, comments)))
-    counts: dict[str, int] = {}
-    for s in t.scenarios:
-        counts[s.status] = counts.get(s.status, 0) + 1
     notes = Markup(markdown.markdown(t.topic.notes_md, extensions=["tables", "fenced_code"])) if t.topic.notes_md else Markup("")
-    return TopicView(t, views, [_scenario(s, results_dir, report_dir, comments) for s in unpaired], notes, counts,
-                     c, (ai_errors or {}).get(t.topic.id))
+    return TopicView(t, views, [_scenario(s, results_dir, report_dir, comments) for s in unpaired], notes,
+                     _stats(t, len(pairs)), _summary(pairs), c, (ai_errors or {}).get(t.topic.id))
 
 
-def summary_rows(topics: list[TopicView]) -> list[dict[str, Any]]:
-    rows = []
-    for tv in topics:
-        for pv in tv.pairs:
-            p = pv.pair
-            best = {d: min(p.timings(d), key=lambda m: m.value, default=None) for d in ("sqlserver", "redis")}
-            rows.append({"topic": tv.t.topic, "pair": p, "sql": best["sqlserver"], "redis": best["redis"],
-                         "verdict": p.timing_verdict, "shared": p.shared})
-    return rows
+def _local_time(value: datetime) -> str:
+    return value.astimezone(REPORT_TZ).strftime("%d/%m/%Y %H:%M")
 
 
 def render(loaded: LoadedReport, out: Path, commentary: dict | None = None, ai_errors: dict | None = None,
            ai_note: str = "") -> str:
+    """HTML of the report of loaded.topic. `out` is where the file will be written (for relative links)."""
     env = Environment(loader=FileSystemLoader(HERE / "templates"), autoescape=select_autoescape(["html", "j2"]),
                       trim_blocks=True, lstrip_blocks=True)
     env.filters["ms"] = charts.fmt_ms
     env.filters["value"] = charts.fmt_value
-    report_dir = out.parent
-    topics = [_topic(t, loaded.results_dir, report_dir, commentary, ai_errors) for t in loaded.result.topics]
-    counts: dict[str, int] = {}
-    for tv in topics:
-        for k, v in tv.counts.items():
-            counts[k] = counts.get(k, 0) + v
+    env.filters["local_time"] = _local_time
+    tv = _topic(loaded.topic, loaded.results_dir, out.parent, commentary, ai_errors)
     return env.get_template("report.html.j2").render(
-        run=loaded.result, env=loaded.result.environment, sources=loaded.sources, topics=topics,
-        summary=summary_rows(topics), counts=counts, status=STATUS, dbms_name=charts.DBMS_NAME,
-        generated_at=datetime.now().astimezone(), commentary_enabled=commentary is not None, ai_note=ai_note,
+        tv=tv, topic=tv.t.topic, env=loaded.result.environment, runs=loaded.runs, status=STATUS,
+        dbms_name=charts.DBMS_NAME, generated_at=datetime.now(timezone.utc),
+        commentary_enabled=commentary is not None, ai_note=ai_note,
         css=Markup((HERE / "static" / "report.css").read_text(encoding="utf-8")),
         js=Markup((HERE / "static" / "report.js").read_text(encoding="utf-8")),
     )
 
 
-def build(loaded: LoadedReport, out: Path | None = None, commentary: dict | None = None,
+def build(loaded: LoadedReport, topic_dir: Path, commentary: dict | None = None,
           ai_errors: dict | None = None, ai_note: str = "") -> Path:
-    out = out or REPORTS_DIR / f"{loaded.result.run_id}.html"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(loaded, out, commentary, ai_errors, ai_note), encoding="utf-8")
+    """Write topics/<folder>/reports/<time>-<target>.html and refresh latest.html; returns the new file."""
+    out_dir = topic_dir / REPORTS_SUBDIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(REPORT_TZ).strftime("%Y%m%d-%H%M%S")
+    out = out_dir / f"{stamp}-{loaded.result.environment.target}.html"
+    html = render(loaded, out, commentary, ai_errors, ai_note)
+    out.write_text(html, encoding="utf-8")
+    (out_dir / LATEST_NAME).write_text(html, encoding="utf-8")       # same folder: relative links still work
     return out
