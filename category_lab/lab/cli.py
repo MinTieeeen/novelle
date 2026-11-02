@@ -252,5 +252,39 @@ def report(topic: str = typer.Argument("all", help="id topic (vd. concurrency) h
             webbrowser.open(path.resolve().as_uri())
 
 
+@app.command()
+def serve(topic: str = typer.Argument("all", help="Topic hiện trên trang chủ của server, hoặc 'all'."),
+          target: str | None = TargetOption,
+          port: int | None = typer.Option(None, "--port", "-p", help="Ghi đè LAB_SERVE_PORT.")) -> None:
+    """Mở report để nhập nhận xét, nhờ AI gợi ý và lưu vào NOTES.md (server chạy trên máy local)."""
+    from lab.framework.runner import RESULTS_DIR
+    from lab.report import server
+
+    cfg = _load(target)
+    folders = {t.meta.id: t.folder for t in registry.select(_discover(), topic)}
+    if not folders:
+        console.print(f"[yellow]Không có topic nào khớp '{topic}'.[/] Xem `lab list`.")
+        raise typer.Exit(1)
+    app_state = server.LabApp(cfg=cfg, folders=folders, results_dir=RESULTS_DIR, token=server.new_token())
+    listen_port = port or cfg.serve.port
+    try:
+        httpd = server.make_server(app_state, cfg.serve.host, listen_port)
+    except OSError as exc:
+        console.print(f"[bold red]Không mở được cổng {listen_port}:[/] {exc}")
+        raise typer.Exit(1)
+    console.print(f"[green]lab serve[/] (Redis target {cfg.target}). Mở trình duyệt:")
+    for tid in folders:
+        console.print(f"  {tid}: [cyan]http://localhost:{listen_port}/topic/{tid}[/]", soft_wrap=True)
+    if not cfg.llm.enabled:
+        console.print(f"[yellow]Nút gợi ý AI sẽ báo lỗi:[/] chưa đặt {cfg.llm.env_keys().api_key} trong novelle/.env")
+    console.print("[dim]Ctrl+C để dừng. Trong Docker cần chạy với `run --service-ports`.[/]")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        console.print("Đã dừng.")
+    finally:
+        httpd.server_close()
+
+
 if __name__ == "__main__":
     app()

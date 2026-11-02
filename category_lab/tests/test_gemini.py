@@ -20,7 +20,7 @@ ANSWER = {
 
 
 def llm(model="m", fallbacks=(), delays=(5, 15, 40)) -> GeminiConfig:
-    return GeminiConfig(api_key="k", model=model, fallback_models=tuple(fallbacks), temperature=0.3, timeout_s=60,
+    return GeminiConfig(api_key="k", model=model, fallback_models=tuple(fallbacks), temperature=0.3, timeout_s=60, suggest_timeout_s=30,
                         retry_delays_s=tuple(delays), max_statement_chars=1500, max_plan_chars=2000)
 
 
@@ -202,3 +202,33 @@ def test_check_key_reports_the_first_model_that_works():
     assert gemini.check_key(llm("a", fallbacks=("b",)), client=client) == "b (bỏ qua: a hết quota)"
     with pytest.raises(RuntimeError, match="không model nào"):
         gemini.check_key(llm("a"), client=Ping(down={"a"}))
+
+
+def test_suggestion_skips_slow_or_overloaded_models_without_retrying(tmp_path):
+    results = make_results(tmp_path)
+    loaded = loader.load_topic_reports(results, run_id="r1")[0]
+
+    class Text(FakeClient):
+        def __init__(self, fail):
+            super().__init__()
+            self.fail, self.models_asked = fail, []
+
+        def generate_content(self, model, contents, config):
+            self.models_asked.append(model)
+            self.calls.append(contents)
+            if model in self.fail:
+                raise self.fail[model]
+            return Resp("Nhận xét gợi ý.")
+
+    client = Text({"a": APIError(503), "b": TimeoutError("read timed out")})
+    s = gemini.suggest_comment(loaded.topic, loaded.result.environment, results, llm("a", fallbacks=("b", "c")),
+                               "demo.redis.a", "nháp", client=client)
+    assert (s.text, s.model) == ("Nhận xét gợi ý.", "c") and client.models_asked == ["a", "b", "c"]
+    assert '"draft": "nháp"' in client.calls[-1] and '"target": "demo.redis.a"' in client.calls[-1]
+
+    with pytest.raises(RuntimeError, match="a: lỗi|a: APIError|a: hết quota|không tạo được"):
+        gemini.suggest_comment(loaded.topic, loaded.result.environment, results, llm("a"), "_topic",
+                               client=Text({"a": APIError(400)}))
+    with pytest.raises(ValueError):
+        gemini.suggest_comment(loaded.topic, loaded.result.environment, results, llm("a"), "no.such.id",
+                               client=Text({}))

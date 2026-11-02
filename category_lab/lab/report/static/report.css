@@ -178,3 +178,39 @@ summary { cursor: pointer; color: var(--text-secondary); }
   .topic { break-before: page; }
   pre { max-height: none; white-space: pre-wrap; }
 }
+
+/* --- editable comments (lab serve) ----------------------------------------------------------------- */
+.edit-hint { max-width: 1120px; margin: 12px auto 0; padding: 8px 14px; font-size: 13.5px; color: var(--text-secondary);
+             background: var(--accent-wash); border: 1px solid var(--border); border-radius: 8px; }
+.viz-root.editable .edit-hint { display: none; }
+.comment { margin: 8px 0 4px; }
+.comment-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.comment-label { font-weight: 600; font-size: 13.5px; }
+.comment-text { width: 100%; min-height: 6em; field-sizing: content; resize: vertical; font: inherit; font-size: 14px;
+                line-height: 1.5; color: var(--text-primary); background: var(--surface-1);
+                border: 1px solid var(--axis); border-radius: 8px; padding: 8px 10px; }
+.comment-text[readonly] { background: var(--page); border-style: dashed; }
+.comment-text:focus-visible { outline: 2px solid var(--series-1); outline-offset: 1px; }
+.comment.dirty .comment-text { border-color: var(--series-1); }
+.comment-status { margin: 4px 0 0; color: var(--text-secondary); min-height: 1em; }
+.comment-status.error { color: var(--critical); }
+.ai-suggest { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 13px;
+              color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--border);
+              border-radius: 999px; padding: 3px 12px 3px 9px; cursor: pointer; }
+.ai-suggest:hover:not(:disabled) { background: var(--accent-wash); }
+.ai-suggest:disabled { opacity: .55; cursor: not-allowed; }
+.ai-suggest .sparkle { width: 15px; height: 15px; fill: var(--series-1); }
+.ai-suggest.busy .sparkle { animation: lab-spin 1.2s linear infinite; }
+@keyframes lab-spin { to { transform: rotate(360deg); } }
+.edit-bar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; justify-content: flex-end;
+            gap: 14px; max-width: 1120px; margin: 0 auto; padding: 10px 16px; background: var(--surface-1);
+            border: 1px solid var(--border); border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgba(0, 0, 0, .08); }
+.edit-bar-status { font-size: 13.5px; color: var(--text-secondary); }
+.edit-bar-status.error { color: var(--critical); }
+.save-notes { font: inherit; font-weight: 600; color: #ffffff; background: var(--series-1); border: 0;
+              border-radius: 8px; padding: 7px 16px; cursor: pointer; }
+.save-notes:disabled { opacity: .5; cursor: not-allowed; }
+@media print {
+  .edit-hint, .edit-bar, .ai-suggest, .comment-status { display: none !important; }
+  .comment-text { border: 0; padding: 0; background: none; resize: none; }
+}

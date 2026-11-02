@@ -2,6 +2,14 @@
    checks, member notes, other metrics, plans and other evidence. Expects `sv` (ScenarioView). #}
 {% set s = sv.s %}
 <div class="detail">
+<section class="detail-sec">
+  <h5>Câu lệnh đã chạy</h5>
+  {% if s.statements %}
+    {% for st in s.statements %}{% include "_statement.html.j2" %}{% endfor %}
+  {% else %}
+    <p class="muted small">Lần chạy này không ghi lại câu lệnh nào. Chạy lại <code>lab run {{ s.topic }}</code>, hoặc gọi <code>ctx.statement(label, text)</code> cho đoạn code không đi qua bench.</p>
+  {% endif %}
+</section>
 <p class="status"><span class="st {{ sv.status_class }}">{{ sv.status_icon }}</span> <b>{{ sv.status_label }}</b>
   <span class="muted">· {{ s.title }} · <code>{{ s.id }}</code> · chạy {{ "%.1f"|format(s.duration_s) }} s</span></p>
 {% if s.skip_reason %}<p class="muted">{{ s.skip_reason }}</p>{% endif %}
@@ -14,14 +22,7 @@
 {% endif %}
 {% if s.error %}<details open class="error"><summary>Lỗi</summary><pre>{{ s.error }}</pre></details>{% endif %}
 
-<section class="detail-sec">
-  <h5>Câu lệnh đã chạy</h5>
-  {% if s.statements %}
-    {% for st in s.statements %}{% include "_statement.html.j2" %}{% endfor %}
-  {% else %}
-    <p class="muted small">Lần chạy này không ghi lại câu lệnh nào. Chạy lại <code>lab run {{ s.topic }}</code>, hoặc gọi <code>ctx.statement(label, text)</code> cho đoạn code không đi qua bench.</p>
-  {% endif %}
-</section>
+
 
 {% if sv.timings %}
 <section class="detail-sec">
@@ -52,12 +53,14 @@
 </section>
 {% endif %}
 
-{% if s.observations %}
 <section class="detail-sec">
   <h5>Nhận xét của thành viên</h5>
-  <div class="observe">{% for o in s.observations %}<p>{{ o }}</p>{% endfor %}</div>
+  {% if s.observations %}
+  <div class="observe" title="Ghi bằng ctx.observe(...) trong scenario">{% for o in s.observations %}<p>{{ o }}</p>{% endfor %}</div>
+  {% endif %}
+  {% set cid = s.id %}{% set ctext = sv.comment %}{% set clabel = "Nhận xét cho " ~ dbms_name[s.dbms] %}
+  {% include "_comment.html.j2" %}
 </section>
-{% endif %}
 
 {% if sv.extra_metrics %}
 <section class="detail-sec">
