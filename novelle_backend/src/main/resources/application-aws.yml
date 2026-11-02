@@ -1,0 +1,9 @@
+# SQL Server: AWS RDS (DB_HOST in novelle/.env). Redis: Redis on EC2 through the SSM tunnel
+# (scripts/aws-tunnel.*), the same tunnel settings category_lab uses.
+spring:
+  data:
+    redis:
+      host: ${LAB_AWS_REDIS_HOST:localhost}
+      port: ${LAB_AWS_REDIS_PORT:16379}
+      password: ${LAB_AWS_REDIS_PASSWORD:}
+      timeout: 5s

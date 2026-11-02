@@ -1,0 +1,8 @@
+# SQL Server: AWS RDS (DB_HOST in novelle/.env). Redis: Redis Stack from novelle/docker-compose.yml.
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 3s
