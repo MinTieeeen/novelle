@@ -89,4 +89,4 @@ app:
   # Public catalog (F1): stories per home block, ratings needed to enter "top rated".
   catalog:
     home-size: ${CATALOG_HOME_SIZE:12}
-    top-rated-min-ratings: ${CATALOG_TOP_RATED_MIN_RATINGS:3}
+    top-rated-min-ratings: ${CATALOG_TOP_RATED_MIN_RATINGS:10}

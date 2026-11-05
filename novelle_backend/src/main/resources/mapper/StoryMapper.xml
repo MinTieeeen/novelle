@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.StoryMapper">
+
+    <!-- visibility check of the detail page: the view only has PUBLISHED, not deleted stories (RB3) -->
+    <select id="findPublicIdBySlug" resultType="java.lang.Integer">
+        SELECT StoryId FROM dbo.vw_PublicStory WHERE Slug = #{slug}
+    </select>
+
+    <resultMap id="StoryDetailMap" type="com.novelle.model.StoryDetail" autoMapping="true">
+        <id property="storyId" column="StoryId"/>
+        <association property="author" javaType="com.novelle.model.AuthorRef"
+                     columnPrefix="Author_" autoMapping="true"/>
+    </resultMap>
+
+    <!-- join: public story + its author profile (verified badge) -->
+    <select id="findDetail" resultMap="StoryDetailMap">
+        SELECT s.StoryId, s.Slug, s.Title, s.Description, s.CoverUrl,
+               s.CompletionStatus, s.AgeRating, s.ChapterCount, s.WordCount, s.ViewCount, s.FollowCount,
+               s.RatingAvg, s.RatingCount, s.LastChapterAt, s.PublishedAt,
+               a.UserId     AS Author_AuthorId,
+               a.PenName    AS Author_PenName,
+               a.IsVerified AS Author_IsVerified
+        FROM dbo.vw_PublicStory s
+        JOIN dbo.Author a ON a.UserId = s.AuthorId
+        WHERE s.StoryId = #{storyId}
+    </select>
+
+    <select id="findGenres" resultType="com.novelle.model.GenreRef">
+        SELECT g.GenreId, g.Name, g.Slug, sg.IsPrimary
+        FROM dbo.StoryGenre sg
+        JOIN dbo.Genre g ON g.GenreId = sg.GenreId
+        WHERE sg.StoryId = #{storyId}
+        ORDER BY sg.IsPrimary DESC, g.SortOrder, g.GenreId
+    </select>
+
+    <select id="findTags" resultType="com.novelle.model.Tag">
+        SELECT t.TagId, t.Name, t.Slug
+        FROM dbo.StoryTag st
+        JOIN dbo.Tag t ON t.TagId = st.TagId
+        WHERE st.StoryId = #{storyId}
+        ORDER BY t.Name
+    </select>
+
+    <!-- explicit mappings: Title exists on both Volume and Chapter -->
+    <resultMap id="VolumeTocMap" type="com.novelle.model.VolumeToc">
+        <id property="volumeId" column="VolumeId"/>
+        <result property="volumeNo" column="VolumeNo"/>
+        <result property="title" column="Title"/>
+        <collection property="chapters" ofType="com.novelle.model.ChapterToc" columnPrefix="Chapter_">
+            <id property="chapterId" column="ChapterId"/>
+            <result property="chapterNo" column="ChapterNo"/>
+            <result property="title" column="Title"/>
+            <result property="publishedAt" column="PublishedAt"/>
+        </collection>
+    </resultMap>
+
+    <!--
+        Join Volume ⋈ Chapter, folded into one VolumeToc per volume by the <collection>. The INNER JOIN drops
+        volumes without a published chapter; c.StoryId = v.StoryId keeps RB7 on the read side.
+    -->
+    <select id="findVolumesWithChapters" resultMap="VolumeTocMap">
+        SELECT v.VolumeId, v.VolumeNo, v.Title,
+               c.ChapterId   AS Chapter_ChapterId,
+               c.ChapterNo   AS Chapter_ChapterNo,
+               c.Title       AS Chapter_Title,
+               c.PublishedAt AS Chapter_PublishedAt
+        FROM dbo.Volume v
+        JOIN dbo.Chapter c ON c.VolumeId = v.VolumeId
+                          AND c.StoryId  = v.StoryId
+                          AND c.Status   = 'PUBLISHED'
+                          AND c.IsDeleted = 0
+        WHERE v.StoryId = #{storyId}
+        ORDER BY v.VolumeNo, c.ChapterNo
+    </select>
+
+    <select id="findLooseChapters" resultType="com.novelle.model.ChapterToc">
+        SELECT ChapterId, ChapterNo, Title, PublishedAt
+        FROM dbo.Chapter
+        WHERE StoryId = #{storyId}
+          AND VolumeId IS NULL
+          AND Status = 'PUBLISHED'
+          AND IsDeleted = 0
+        ORDER BY ChapterNo
+    </select>
+</mapper>
