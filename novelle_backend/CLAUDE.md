@@ -1,88 +1,53 @@
 # CLAUDE.md: novelle_backend
 
-REST API for Novelle. Repository-wide rules are in [../CLAUDE.md](../CLAUDE.md); the human guide is [README.md](README.md) (sections 3–4 are partly outdated, see the end of this file).
+REST API for Novelle. Repository-wide rules: [../CLAUDE.md](../CLAUDE.md). Human guide: [README.md](README.md) (sections 3–4 partly outdated: it still mentions a local SQL Server compose, `DB_URL`/`DB_PASSWORD`, a Java seeder and scripts that do not exist; follow this file and the code).
+
+## Detailed rules (read before working in the matching area)
+
+| When you… | Read |
+|---|---|
+| plan or start a module, write its spec doc, report results | [../.claude/rules/module-workflow.md](../.claude/rules/module-workflow.md) |
+| write controllers, services, DTOs, errors, security, rate limits, config | [../.claude/rules/backend-java.md](../.claude/rules/backend-java.md) |
+| write mapper interfaces, XML mappers or models | [../.claude/rules/backend-mybatis.md](../.claude/rules/backend-mybatis.md) |
+| write or run tests | [../.claude/rules/backend-testing.md](../.claude/rules/backend-testing.md) |
+| touch `database/` or `scripts/` | [../.claude/rules/database-scripts.md](../.claude/rules/database-scripts.md) |
 
 ## Stack
 
-Java 21, Spring Boot 3.5.x (Web, Validation, Security, Actuator, Data Redis, Session Data Redis), **MyBatis** (`mybatis-spring-boot-starter`), `mssql-jdbc`, jsoup, springdoc-openapi, Maven wrapper. Tests: JUnit 5, Spring Boot Test, Testcontainers.
+Java 21, Spring Boot 3.5.x (Web, Validation, Security, Actuator, Data Redis, Session Data Redis), MyBatis, `mssql-jdbc`, jsoup, springdoc-openapi, Maven wrapper. Tests: JUnit 5, Mockito, AssertJ, Spring Boot Test (MockMvc).
 
 ## Commands (run from `novelle_backend/`)
 
 ```bash
-./mvnw spring-boot:run                                      # profile local (default)
-./mvnw spring-boot:run -Dspring-boot.run.profiles=aws       # Redis on EC2 through the tunnel
-./mvnw package -DskipTests
-./mvnw test                                                 # needs RDS + Redis reachable
-.\scripts\db-seed.ps1          # seed mock data            (shared RDS: ask the user first)
-.\scripts\db-seed.ps1 reset    # delete all data but Genre (ask the user first)
+./mvnw spring-boot:run                                  # profile local (default): RDS + compose Redis
+./mvnw spring-boot:run -Dspring-boot.run.profiles=aws   # RDS + Redis on EC2 through the tunnel (16379)
+./mvnw -q -o compile
+./mvnw clean test                                       # needs RDS + Redis; writes are rolled back
+.\scripts\db-seed.ps1 [reset]                           # shared RDS: ask the user first
 ```
 
-Swagger UI: http://localhost:8080/swagger-ui.html. Health: `/actuator/health`.
+Swagger UI http://localhost:8080/swagger-ui.html · health `/actuator/health`. Redis must be up first; on Windows stop the app by PID.
 
 ## Configuration
 
-- `application.yml` imports `../.env` with `spring.config.import: optional:file:../.env[.properties]`, so `mvnw` must run from `novelle_backend/`.
-- Datasource: `DB_HOST` (RDS), login `novelle_app`, password `APP_PASSWORD`, database `NovelleDB`.
-- Profiles: `local` (default) = RDS + compose Redis (`REDIS_PORT`); `aws` = RDS + Redis on EC2 through the tunnel (`LAB_AWS_REDIS_*`, port 16379). **The database is always RDS**; profiles only switch Redis.
-- Profile files hold only connection wiring. New settings get a default in `novelle/.env.example`, never a secret in YAML.
+`application.yml` imports `../.env` (`optional:file:../.env[.properties]`), so `mvnw` must run from `novelle_backend/`. Datasource = RDS (`DB_HOST`, login `novelle_app`, `APP_PASSWORD`, `NovelleDB`). Profiles only switch Redis. New settings: default in `novelle/.env.example`, never a secret in YAML.
 
 ## Code layout
 
-Package `com.novelle`, organised **by layer**. Each layer package is flat and holds the classes of every feature; class names carry the feature (`AuthController`, `StoryService`, `ChapterMapper`). Technical building blocks that are not part of a layer live under `infrastructure/`. All MyBatis XML is in `src/main/resources/mapper/*Mapper.xml`, one file per mapper interface with the same name.
+Package `com.novelle`, **by layer**; layer packages are flat, class names carry the feature. MyBatis XML: `src/main/resources/mapper/<Name>Mapper.xml`.
 
 | Package | Content |
 |---|---|
-| `controller` | REST controllers: Bean Validation on request DTOs, HTTP ↔ service mapping only (`AuthController`, `MeController`, `StoryController`, `StudioChapterController`, `AdminUserController`, …) |
-| `service` | Business rules RB1–RB16, ownership checks, `@Transactional`, cache eviction (`AuthService`, `ProfileService`, `StoryService`, …) |
-| `mapper` | MyBatis `@Mapper` interfaces (`AuthMapper`, `UserMapper`, `StoryMapper`, …) |
-| `model` | Row objects mapped from SQL Server (`AppUser`, `Story`, `Chapter`, …) |
-| `dto` | Request/response records (`*Request`, `*Response`, paging records) |
-| `exception` | `ApiError`, `ApiException`, `ErrorCode`, `GlobalExceptionHandler` |
-| `config` | Security, Redis, session, CORS, scheduling, OpenAPI, MyBatis, Web MVC |
-| `infrastructure.security` | `SessionUser`, `CurrentUser`, `UserStatusFilter`, JSON 401/403 handlers |
-| `infrastructure.mybatis` | Type handlers (`ROWVERSION` ↔ Base64, TVP for `sp_FlushViews`) |
-| `infrastructure.cache` | `CacheService.getOrLoad/evict`, all keys in `CacheKeys` |
-| `infrastructure.ratelimit` | `@RateLimited` + Redis fixed-window interceptor |
-| `infrastructure.views` | `ViewCounterService` (Redis INCR), `ViewFlushJob` (every 60 s → `sp_FlushViews`) |
-| `infrastructure.jobs` | `ScheduledPublishJob` (`sp_PublishScheduled`); replaces SQL Agent, which RDS Express lacks |
-| `infrastructure.html` | `HtmlSanitizer` (jsoup allowlist for chapter content) |
+| `controller`, `service`, `mapper`, `model`, `dto` | the layers (see backend-java rule) |
+| `exception` | `ErrorCode`, `ApiError`, `ApiException`, `ApiErrorWriter`, `GlobalExceptionHandler` |
+| `config` | `SecurityConfig`, `WebMvcConfig`, CORS, OpenAPI |
+| `infrastructure.security` | `SessionUser`, `CurrentUser`, `SessionAuthenticator`, `UserStatusFilter`, JSON 401/403 handlers |
+| `infrastructure.mybatis` | `RowVersion` + type handler (TVP for `sp_FlushViews` later) |
+| `infrastructure.ratelimit` | `@RateLimited`, interceptor, Redis fixed window |
+| `infrastructure.cache` / `views` / `jobs` / `html` | cache-aside, view counters + flush job, `sp_PublishScheduled` job, chapter HTML sanitizer (not built yet) |
 
-Feature → main classes: auth/account (`AuthController`, `MeController`, `UserController`), F1–F3 story, F4 reading, F5 library, F6 rating, F7 author request, F8–F10 studio (`Studio*`), F11–F13 admin (`Admin*`).
+Request flow: Spring Session (Redis) → `UserStatusFilter` → CSRF → logout → URL rules → `RateLimitInterceptor` → controller → service (`@Transactional`) → mapper → SQL Server; errors → `ApiError { status, code, message, details }`.
 
-Request flow: Security filters (session from Redis, CSRF cookie `XSRF-TOKEN` + header `X-XSRF-TOKEN`, `UserStatusFilter`, role rules) → `RateLimitInterceptor` → controller (Bean Validation) → service (business rules RB1–RB16, `@Transactional`, cache) → mapper → SQL Server. Errors → `GlobalExceptionHandler` → `ApiError { status, code, message, details }`.
+Access: `/api/studio/**` AUTHOR, `/api/admin/**` ADMIN, listed public GETs, every other request needs login.
 
-Access rules: `/api/studio/**` → AUTHOR, `/api/admin/**` → ADMIN, public GETs for home/stories/authors/chapters/genres/tags, every write needs login.
-
-## MyBatis rules
-
-- **All SQL lives in XML mappers or `database/`. No SQL strings in Java.**
-- Parameters always `#{…}`. `${…}` only for `ORDER BY` columns chosen from a whitelist in the service.
-- Multi-condition search: dynamic SQL (`<where>`, `<if>`, `<foreach>`), never string concatenation. Full-text through `CONTAINSTABLE`.
-- Paging: `ORDER BY … OFFSET #{offset} ROWS FETCH NEXT #{size} ROWS ONLY`.
-- Nested results: `<resultMap>` with `<association>` / `<collection>`. Otherwise rely on case-insensitive auto-mapping (PascalCase column → camelCase field).
-- Stored procedures: `<select statementType="CALLABLE">{call dbo.sp_X(#{a}, #{b})}</select>`.
-- Optimistic locking: `UPDATE … WHERE ChapterId = #{id} AND RowVer = #{rowVersion}`; 0 affected rows → 409 Conflict.
-- Inserts that need the key: `useGeneratedKeys="true" keyProperty="…"`.
-
-## Java conventions
-
-- DTOs are Java records; validate request DTOs with Bean Validation.
-- Services own business rules and transactions; controllers only map HTTP ↔ service. Ownership checks (RB1, RB2) in studio services → 403.
-- Every write that changes cached data evicts the matching key (`cache:story:{id}`, `cache:home`, …) via `CacheService`.
-- Chapter HTML is sanitized with jsoup (allowlist `p`, `h2`–`h4`, `br`, `em`, `strong`, `blockquote`) before saving.
-- Timestamps are UTC (`DATETIME2(3)`); Vietnam-time grouping is done in SQL with `AT TIME ZONE 'SE Asia Standard Time'`.
-- Redis key names follow `../../docs/data-dictionary.md`.
-
-## Database scripts (`database/`)
-
-- **No migration tool.** `bootstrap/` (database + logins, run once as the RDS master user), `schema/01..07` (tables, indexes, full-text, views, procedures, triggers, reference data), `queries/`, `seed/`. The app never changes the schema.
-- A table change is made in `database/schema`, then mirrored in the affected mappers and in `data-dictionary.md`. Views, procedures and triggers use `CREATE OR ALTER`.
-- Scripts must run unchanged on RDS: no `sysadmin`, no file paths, no SQL Agent.
-- Database objects and columns are PascalCase.
-- **Seed = SQL scripts** `seed/10..90` via `scripts/db-seed.ps1|.sh`; one scale (~200 users, 150 stories, 3,454 chapters). No Java seeder, no Datafaker. On the free-tier instance build long `NVARCHAR(MAX)` text in slices of 250 with `OPTION (RECOMPILE)` and cap joins against `seed.Nums` with `TOP (200)`.
-- `sqlcmd` needs `-f 65001`, `-C`, and relative script paths (cd to `novelle_backend/` first).
-- After seeding, `database/queries/99_check_invariants.sql` must return no rows.
-
-## Outdated README content
-
-`README.md` still mentions: a backend `docker-compose.yml` with a local SQL Server, `DB_URL` / `DB_PASSWORD` / `SEED_DEMO_PASSWORD` variables, a `seed` Spring profile with `MockDataGenerator` and Datafaker, `db-bootstrap` / `db-apply-schema` / `aws-tunnel` scripts that do not exist yet. Follow this file and the code instead.
+Roadmap of all modules (order, APIs, files, risks): `../../docs/backend-roadmap.md`. Done so far: module users (`/api/auth/**`, `/api/me/**`, `/api/users/{username}`), spec in `../../docs/module-users.md`.
