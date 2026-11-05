@@ -50,4 +50,4 @@ Request flow: Spring Session (Redis) → `UserStatusFilter` → CSRF → logout 
 
 Access: `/api/studio/**` AUTHOR, `/api/admin/**` ADMIN, listed public GETs, every other request needs login.
 
-Done so far: module users (`/api/auth/**`, `/api/me/**`, `/api/users/{username}`), spec in `../../docs/module-users.md`.
+Roadmap of all modules (order, APIs, files, risks): `../../docs/backend-roadmap.md`. Done so far: module users (`/api/auth/**`, `/api/me/**`, `/api/users/{username}`), spec in `../../docs/module-users.md`.
