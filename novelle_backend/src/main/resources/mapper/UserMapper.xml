@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.UserMapper">
+
+    <!-- User + optional Author profile; the association stays null when the LEFT JOIN finds no Author row -->
+    <resultMap id="AppUserMap" type="com.novelle.model.AppUser" autoMapping="true">
+        <id property="userId" column="UserId"/>
+        <association property="author" javaType="com.novelle.model.AuthorSummary"
+                     columnPrefix="Author_" notNullColumn="AuthorId" autoMapping="true"/>
+    </resultMap>
+
+    <sql id="userWithAuthor">
+        SELECT u.UserId, u.Username, u.Email, u.DisplayName, u.AvatarUrl, u.Bio, u.Role, u.Status,
+               u.CreatedAt, u.LastLoginAt, u.RowVer AS RowVersion,
+               a.UserId        AS Author_AuthorId,
+               a.PenName       AS Author_PenName,
+               a.Bio           AS Author_Bio,
+               a.IsVerified    AS Author_IsVerified,
+               a.FollowerCount AS Author_FollowerCount
+        FROM dbo.[User] u
+        LEFT JOIN dbo.Author a ON a.UserId = u.UserId
+    </sql>
+
+    <select id="findMe" resultMap="AppUserMap">
+        <include refid="userWithAuthor"/>
+        WHERE u.UserId = #{userId}
+    </select>
+
+    <!-- composite condition: username AND active -->
+    <select id="findPublicByUsername" resultMap="AppUserMap">
+        <include refid="userWithAuthor"/>
+        WHERE u.Username = #{username} AND u.Status = 'ACTIVE'
+    </select>
+
+    <update id="updateProfile">
+        UPDATE dbo.[User]
+        <set>
+            <if test="displayName != null">DisplayName = #{displayName},</if>
+            <if test="bioSet">Bio = #{bio},</if>
+            UpdatedAt = SYSUTCDATETIME()
+        </set>
+        WHERE UserId = #{userId} AND RowVer = #{rowVersion}
+    </update>
+
+    <select id="findPasswordHash" resultType="string">
+        SELECT PasswordHash FROM dbo.[User] WHERE UserId = #{userId}
+    </select>
+
+    <update id="updatePasswordHash">
+        UPDATE dbo.[User]
+        SET PasswordHash = #{passwordHash}, UpdatedAt = SYSUTCDATETIME()
+        WHERE UserId = #{userId}
+    </update>
+</mapper>

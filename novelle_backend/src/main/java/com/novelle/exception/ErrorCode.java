@@ -26,7 +26,15 @@ public enum ErrorCode {
     CONFLICT(HttpStatus.CONFLICT, "The request conflicts with the current data."),
     STALE_DATA(HttpStatus.CONFLICT, "The data was changed by someone else; reload and try again."),
     ALREADY_PROCESSED(HttpStatus.CONFLICT, "This item was already processed."),
-    PEN_NAME_TAKEN(HttpStatus.CONFLICT, "Pen name is already in use.");
+    PEN_NAME_TAKEN(HttpStatus.CONFLICT, "Pen name is already in use."),
+
+    // accounts
+    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Wrong username, email or password."),
+    ACCOUNT_BANNED(HttpStatus.FORBIDDEN, "This account is banned."),
+    USERNAME_TAKEN(HttpStatus.CONFLICT, "Username is already in use."),
+    EMAIL_TAKEN(HttpStatus.CONFLICT, "Email is already in use."),
+    WRONG_PASSWORD(HttpStatus.BAD_REQUEST, "Current password is wrong."),
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "User not found.");
 
     private final HttpStatus status;
     private final String defaultMessage;

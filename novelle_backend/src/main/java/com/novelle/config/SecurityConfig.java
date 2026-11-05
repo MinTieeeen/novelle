@@ -2,8 +2,12 @@ package com.novelle.config;
 
 import java.util.List;
 
+import com.novelle.exception.ApiErrorWriter;
 import com.novelle.infrastructure.security.JsonAccessDeniedHandler;
 import com.novelle.infrastructure.security.JsonAuthEntryPoint;
+import com.novelle.infrastructure.security.SessionAuthenticator;
+import com.novelle.infrastructure.security.UserStatusFilter;
+import com.novelle.mapper.AuthMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -16,6 +20,7 @@ import org.springframework.security.web.authentication.logout.HttpStatusReturnin
 import org.springframework.security.web.context.DelegatingSecurityContextRepository;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
@@ -27,15 +32,19 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * Session-cookie security for the SPA: the session lives in Redis (Spring Session), CSRF uses the
  * XSRF-TOKEN cookie + X-XSRF-TOKEN header. There is no login filter: AuthService checks the password and
  * stores the authentication through {@link #securityContextRepository()}. Errors are ApiError JSON.
- * UserStatusFilter (infrastructure.security) is added after SecurityContextHolderFilter in phase 2.
+ * UserStatusFilter runs right after the context is loaded, so bans and role changes apply on the next request.
  */
 @Configuration
 public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityContextRepository securityContextRepository,
-            JsonAuthEntryPoint authEntryPoint, JsonAccessDeniedHandler accessDeniedHandler) throws Exception {
+            JsonAuthEntryPoint authEntryPoint, JsonAccessDeniedHandler accessDeniedHandler,
+            AuthMapper authMapper, SessionAuthenticator sessionAuthenticator, ApiErrorWriter errorWriter)
+            throws Exception {
         http
+            .addFilterAfter(new UserStatusFilter(authMapper, sessionAuthenticator, errorWriter),
+                    SecurityContextHolderFilter.class)
             .cors(cors -> {})
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())

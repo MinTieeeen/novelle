@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.AuthMapper">
+
+    <!-- single condition on a UNIQUE column (UQ_User_Email or UQ_User_Username) -->
+    <select id="findCredential" resultType="com.novelle.model.UserCredential">
+        SELECT UserId, Username, PasswordHash, Role, Status, BanReason
+        FROM dbo.[User]
+        <where>
+            <choose>
+                <when test="login.contains('@')">Email = #{login}</when>
+                <otherwise>Username = #{login}</otherwise>
+            </choose>
+        </where>
+    </select>
+
+    <select id="existsUsername" resultType="boolean">
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.[User] WHERE Username = #{username}) THEN 1 ELSE 0 END
+    </select>
+
+    <select id="existsEmail" resultType="boolean">
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.[User] WHERE Email = #{email}) THEN 1 ELSE 0 END
+    </select>
+
+    <!-- Role and Status take their defaults (READER, ACTIVE); registration logs the user in, hence LastLoginAt -->
+    <insert id="insertUser" parameterType="com.novelle.model.NewUser"
+            useGeneratedKeys="true" keyProperty="userId" keyColumn="UserId">
+        INSERT INTO dbo.[User] (Username, Email, PasswordHash, DisplayName, LastLoginAt)
+        VALUES (#{username}, #{email}, #{passwordHash}, #{displayName}, SYSUTCDATETIME())
+    </insert>
+
+    <update id="updateLastLogin">
+        UPDATE dbo.[User] SET LastLoginAt = SYSUTCDATETIME() WHERE UserId = #{userId}
+    </update>
+
+    <!-- primary-key seek, runs on every authenticated request -->
+    <select id="findState" resultType="com.novelle.model.UserState">
+        SELECT UserId, Role, Status, BanReason
+        FROM dbo.[User]
+        WHERE UserId = #{userId}
+    </select>
+</mapper>
