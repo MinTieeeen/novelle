@@ -43,7 +43,7 @@ server:
 mybatis:
   mapper-locations: classpath:mapper/**/*.xml
   type-aliases-package: com.novelle
-  type-handlers-package: com.novelle.common.mybatis
+  type-handlers-package: com.novelle.infrastructure.mybatis
   configuration:
     map-underscore-to-camel-case: false   # columns are PascalCase; auto-mapping is case-insensitive
     default-statement-timeout: 30
@@ -67,3 +67,13 @@ management:
 app:
   cors:
     allowed-origins: ${APP_CORS_ORIGINS:http://localhost:5173}
+  # Fixed-window limits used by @RateLimited("<name>"); Redis key rl:<name>:<ip|userId>.
+  rate-limit:
+    enabled: ${RL_ENABLED:true}
+    limits:
+      login:
+        max-requests: ${RL_LOGIN_MAX:10}
+        window: ${RL_LOGIN_WINDOW:60s}
+      register:
+        max-requests: ${RL_REGISTER_MAX:5}
+        window: ${RL_REGISTER_WINDOW:1h}
