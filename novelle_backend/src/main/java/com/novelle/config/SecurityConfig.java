@@ -20,19 +20,20 @@ import org.springframework.security.web.authentication.logout.HttpStatusReturnin
 import org.springframework.security.web.context.DelegatingSecurityContextRepository;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
-import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 /**
  * Session-cookie security for the SPA: the session lives in Redis (Spring Session), CSRF uses the
  * XSRF-TOKEN cookie + X-XSRF-TOKEN header. There is no login filter: AuthService checks the password and
  * stores the authentication through {@link #securityContextRepository()}. Errors are ApiError JSON.
- * UserStatusFilter runs right after the context is loaded, so bans and role changes apply on the next request.
+ * UserStatusFilter runs right after CorsFilter (the context is already loaded), so bans and role changes apply
+ * on the next request and its 403 still has CORS headers.
  */
 @Configuration
 public class SecurityConfig {
@@ -43,8 +44,10 @@ public class SecurityConfig {
             AuthMapper authMapper, SessionAuthenticator sessionAuthenticator, ApiErrorWriter errorWriter)
             throws Exception {
         http
+            // after CorsFilter (which runs after SecurityContextHolderFilter), so the 403 ACCOUNT_BANNED of a
+            // cross-origin request still carries the CORS headers; still before CsrfFilter and the URL rules
             .addFilterAfter(new UserStatusFilter(authMapper, sessionAuthenticator, errorWriter),
-                    SecurityContextHolderFilter.class)
+                    CorsFilter.class)
             .cors(cors -> {})
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())

@@ -34,7 +34,11 @@ public enum ErrorCode {
     USERNAME_TAKEN(HttpStatus.CONFLICT, "Username is already in use."),
     EMAIL_TAKEN(HttpStatus.CONFLICT, "Email is already in use."),
     WRONG_PASSWORD(HttpStatus.BAD_REQUEST, "Current password is wrong."),
-    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "User not found.");
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "User not found."),
+
+    // catalog (public reading side)
+    STORY_NOT_FOUND(HttpStatus.NOT_FOUND, "Story not found."),
+    AUTHOR_NOT_FOUND(HttpStatus.NOT_FOUND, "Author not found.");
 
     private final HttpStatus status;
     private final String defaultMessage;

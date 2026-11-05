@@ -46,7 +46,7 @@ Package `com.novelle`, **by layer**; layer packages are flat, class names carry 
 | `infrastructure.ratelimit` | `@RateLimited`, interceptor, Redis fixed window |
 | `infrastructure.cache` / `views` / `jobs` / `html` | cache-aside, view counters + flush job, `sp_PublishScheduled` job, chapter HTML sanitizer (not built yet) |
 
-Request flow: Spring Session (Redis) → `UserStatusFilter` → CSRF → logout → URL rules → `RateLimitInterceptor` → controller → service (`@Transactional`) → mapper → SQL Server; errors → `ApiError { status, code, message, details }`.
+Request flow: Spring Session (Redis) → CORS → `UserStatusFilter` → CSRF → logout → URL rules → `RateLimitInterceptor` → controller → service (`@Transactional`) → mapper → SQL Server; errors → `ApiError { status, code, message, details }`.
 
 Access: `/api/studio/**` AUTHOR, `/api/admin/**` ADMIN, listed public GETs, every other request needs login.
 

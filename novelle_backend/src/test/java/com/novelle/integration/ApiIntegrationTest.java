@@ -180,6 +180,11 @@ abstract class ApiIntegrationTest {
             return send(withBody(MockMvcRequestBuilders.put(url), body), true);
         }
 
+        /** Any request built by the test (extra headers, query params) with this client's cookies, IP and CSRF header. */
+        ResultActions perform(MockHttpServletRequestBuilder builder) throws Exception {
+            return send(builder, true);
+        }
+
         /** The Spring Session id behind the SESSION cookie (the cookie value is Base64). */
         String sessionId() {
             return session == null ? null : new String(Base64.getDecoder().decode(session), StandardCharsets.UTF_8);

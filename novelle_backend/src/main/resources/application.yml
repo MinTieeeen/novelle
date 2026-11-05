@@ -77,3 +77,16 @@ app:
       register:
         max-requests: ${RL_REGISTER_MAX:5}
         window: ${RL_REGISTER_WINDOW:1h}
+      search:
+        max-requests: ${RL_SEARCH_MAX:60}
+        window: ${RL_SEARCH_WINDOW:60s}
+  # Cache-aside entries in Redis (CacheService, keys in CacheKeys); SQL Server stays the source of truth.
+  cache:
+    ttl:
+      genre: ${CACHE_GENRE_TTL:1h}
+      home: ${CACHE_HOME_TTL:2m}
+      story: ${CACHE_STORY_TTL:10m}
+  # Public catalog (F1): stories per home block, ratings needed to enter "top rated".
+  catalog:
+    home-size: ${CATALOG_HOME_SIZE:12}
+    top-rated-min-ratings: ${CATALOG_TOP_RATED_MIN_RATINGS:3}

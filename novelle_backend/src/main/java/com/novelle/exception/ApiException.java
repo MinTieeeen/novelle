@@ -1,5 +1,7 @@
 package com.novelle.exception;
 
+import java.util.List;
+
 /**
  * Business error thrown by services (and interceptors); {@link GlobalExceptionHandler} turns it into an
  * {@link ApiError} with the status of its {@link ErrorCode}.
@@ -21,6 +23,15 @@ public class ApiException extends RuntimeException {
         super(message);
         this.code = code;
         this.details = details;
+    }
+
+    /**
+     * 400 VALIDATION_FAILED for one request field, in the same shape Bean Validation errors have
+     * ({@code details = [{field, message}]}); for rules that span several parameters.
+     */
+    public static ApiException invalidField(String field, String message) {
+        return new ApiException(ErrorCode.VALIDATION_FAILED, ErrorCode.VALIDATION_FAILED.defaultMessage(),
+                List.of(new ApiError.FieldError(field, message)));
     }
 
     public ErrorCode code() {
