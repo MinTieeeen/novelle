@@ -13,8 +13,10 @@ import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.novelle.infrastructure.cache.CacheKeys;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -61,6 +63,16 @@ abstract class ApiIntegrationTest {
     private final List<Client> clients = new ArrayList<>();
     private String fixtureHash;
 
+    /**
+     * Cache entries are removed before and after every test. Before: an entry left by a running app or an
+     * earlier test would hide the fixture changes of this test. After: a loader that ran inside this test's
+     * transaction may have cached rows that are about to be rolled back, and Redis is shared.
+     */
+    @BeforeEach
+    void clearCacheBefore() {
+        deleteCacheEntries();
+    }
+
     @AfterEach
     void cleanRedis() {
         for (Client c : clients) {
@@ -69,6 +81,14 @@ abstract class ApiIntegrationTest {
                 redis.delete(keys);
             }
             c.sessionIds.forEach(id -> redis.delete(sessionKey(id)));
+        }
+        deleteCacheEntries();
+    }
+
+    protected void deleteCacheEntries() {
+        Set<String> keys = redis.keys(CacheKeys.PREFIX + "*");
+        if (keys != null && !keys.isEmpty()) {
+            redis.delete(keys);
         }
     }
 

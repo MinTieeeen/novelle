@@ -22,7 +22,7 @@ public record PageQuery(int page, int size) {
         if (s < 1 || s > MAX_SIZE) {
             throw ApiException.invalidField("size", "must be between 1 and " + MAX_SIZE);
         }
-        if ((long) (p + 1) * s > MAX_WINDOW) {
+        if (((long) p + 1) * s > MAX_WINDOW) {           // long before the +1: page = Integer.MAX_VALUE must not wrap
             throw ApiException.invalidField("page", "only the first " + MAX_WINDOW + " results can be paged");
         }
         return new PageQuery(p, s);
