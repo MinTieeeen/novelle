@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.StorySearchMapper">
+
+    <!-- ===== Story card, shared with CatalogMapper (refid / resultMap with the full namespace) ===== -->
+
+    <!-- primaryGenre stays null when the story has no primary genre (LEFT JOIN finds nothing) -->
+    <resultMap id="StoryCardMap" type="com.novelle.model.StoryCard" autoMapping="true">
+        <id property="storyId" column="StoryId"/>
+        <association property="author" javaType="com.novelle.model.AuthorRef"
+                     columnPrefix="Author_" autoMapping="true"/>
+        <association property="primaryGenre" javaType="com.novelle.model.GenreRef"
+                     columnPrefix="Genre_" notNullColumn="GenreId" autoMapping="true"/>
+    </resultMap>
+
+    <!-- alias s = vw_PublicStory (RB3: PUBLISHED and not deleted); StorySort clauses rely on it -->
+    <sql id="cardColumns">
+        s.StoryId, s.Slug, s.Title, LEFT(s.Description, 300) AS Description, s.CoverUrl,
+        s.CompletionStatus, s.AgeRating, s.ChapterCount, s.ViewCount, s.FollowCount,
+        s.RatingAvg, s.RatingCount, s.LastChapterAt, s.PublishedAt,
+        s.AuthorId   AS Author_AuthorId,
+        s.AuthorName AS Author_PenName,
+        g.GenreId    AS Genre_GenreId,
+        g.Name       AS Genre_Name,
+        g.Slug       AS Genre_Slug
+    </sql>
+
+    <!-- primary genre through the filtered unique index UX_StoryGenre_Primary: at most one row per story -->
+    <sql id="cardFrom">
+        FROM dbo.vw_PublicStory s
+        LEFT JOIN dbo.StoryGenre pg ON pg.StoryId = s.StoryId AND pg.IsPrimary = 1
+        LEFT JOIN dbo.Genre g       ON g.GenreId  = pg.GenreId
+    </sql>
+
+    <!-- ===== Search ===== -->
+
+    <!--
+        Full-text: one CONTAINSTABLE per term. A single "a*" AND "b*" over (Title, Description) only matches
+        when both words are in the same column, so the terms are matched one by one and a story must match
+        all of them (subquery + GROUP BY/HAVING). Relevance = sum of the per-term RANKs, exposed as ft.[RANK].
+    -->
+    <sql id="searchJoins">
+        <if test="c.terms != null and !c.terms.isEmpty()">
+            JOIN (
+                SELECT m.[KEY], SUM(m.[RANK]) AS [RANK]
+                FROM (
+                    <foreach collection="c.terms" item="term" index="i" separator="UNION ALL">
+                        SELECT [KEY], [RANK], #{i} AS TermNo
+                        FROM CONTAINSTABLE(dbo.Story, (Title, Description), #{term})
+                    </foreach>
+                ) m
+                GROUP BY m.[KEY]
+                HAVING COUNT(DISTINCT m.TermNo) = #{c.termCount}
+            ) ft ON ft.[KEY] = s.StoryId
+        </if>
+    </sql>
+
+    <sql id="searchWhere">
+        <where>
+            <if test="c.authorId != null">
+                AND s.AuthorId = #{c.authorId}
+            </if>
+            <if test="c.completionStatus != null">
+                AND s.CompletionStatus = #{c.completionStatus}
+            </if>
+            <if test="c.ageRating != null">
+                AND s.AgeRating = #{c.ageRating}
+            </if>
+            <if test="c.minChapters != null">
+                AND s.ChapterCount &gt;= #{c.minChapters}
+            </if>
+            <if test="c.maxChapters != null">
+                AND s.ChapterCount &lt;= #{c.maxChapters}
+            </if>
+            <if test="c.minRating != null">
+                AND s.RatingAvg &gt;= #{c.minRating}
+            </if>
+            <if test="c.genreSlugs != null and !c.genreSlugs.isEmpty()">
+                <choose>
+                    <when test="c.genreAny">
+                        <!-- at least one of the genres -->
+                        AND EXISTS (
+                            SELECT 1
+                            FROM dbo.StoryGenre sg
+                            JOIN dbo.Genre gg ON gg.GenreId = sg.GenreId
+                            WHERE sg.StoryId = s.StoryId
+                              AND gg.Slug IN
+                              <foreach collection="c.genreSlugs" item="slug" open="(" separator="," close=")">#{slug}</foreach>
+                        )
+                    </when>
+                    <otherwise>
+                        <!-- every genre: the story must match as many distinct genres as were asked for -->
+                        AND s.StoryId IN (
+                            SELECT sg.StoryId
+                            FROM dbo.StoryGenre sg
+                            JOIN dbo.Genre gg ON gg.GenreId = sg.GenreId
+                            WHERE gg.Slug IN
+                                  <foreach collection="c.genreSlugs" item="slug" open="(" separator="," close=")">#{slug}</foreach>
+                            GROUP BY sg.StoryId
+                            HAVING COUNT(DISTINCT sg.GenreId) = #{c.genreCount}
+                        )
+                    </otherwise>
+                </choose>
+            </if>
+            <if test="c.tagSlugs != null and !c.tagSlugs.isEmpty()">
+                <!-- every tag -->
+                AND s.StoryId IN (
+                    SELECT st.StoryId
+                    FROM dbo.StoryTag st
+                    JOIN dbo.Tag t ON t.TagId = st.TagId
+                    WHERE t.Slug IN
+                          <foreach collection="c.tagSlugs" item="slug" open="(" separator="," close=")">#{slug}</foreach>
+                    GROUP BY st.StoryId
+                    HAVING COUNT(DISTINCT st.TagId) = #{c.tagCount}
+                )
+            </if>
+        </where>
+    </sql>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        FROM dbo.vw_PublicStory s
+        <include refid="searchJoins"/>
+        <include refid="searchWhere"/>
+    </select>
+
+    <!-- ${c.orderBy} comes only from StorySort -->
+    <select id="search" resultMap="StoryCardMap">
+        SELECT <include refid="cardColumns"/>
+        <include refid="cardFrom"/>
+        <include refid="searchJoins"/>
+        <include refid="searchWhere"/>
+        ORDER BY ${c.orderBy}
+        OFFSET #{c.offset} ROWS FETCH NEXT #{c.size} ROWS ONLY
+    </select>
+</mapper>

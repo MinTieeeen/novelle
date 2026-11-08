@@ -145,7 +145,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private ResponseEntity<Object> validationFailed(BindingResult result, HttpHeaders headers) {
         List<ApiError.FieldError> fields = Stream.concat(
                 result.getFieldErrors().stream()
-                        .map(e -> new ApiError.FieldError(e.getField(), e.getDefaultMessage())),
+                        // a conversion failure (page=abc) would echo Java type names: send a neutral text
+                        .map(e -> new ApiError.FieldError(e.getField(),
+                                e.isBindingFailure() ? "has an invalid value" : e.getDefaultMessage())),
                 result.getGlobalErrors().stream()           // class-level constraints
                         .map(e -> new ApiError.FieldError(e.getObjectName(), e.getDefaultMessage())))
                 .toList();

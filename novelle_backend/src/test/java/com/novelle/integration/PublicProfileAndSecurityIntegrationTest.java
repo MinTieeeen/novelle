@@ -8,16 +8,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.time.Duration;
 import java.util.Map;
 
+import com.novelle.config.CorsProperties;
 import com.novelle.infrastructure.ratelimit.RateLimitProperties;
 import com.novelle.infrastructure.ratelimit.RateLimitService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 /** U4 public profile, UserStatusFilter, rate limiting and the shared error format. */
 class PublicProfileAndSecurityIntegrationTest extends ApiIntegrationTest {
 
     @Autowired
     private RateLimitService rateLimitService;
+
+    @Autowired
+    private CorsProperties corsProperties;
 
     /* ---------- U4 ---------- */
 
@@ -73,6 +78,21 @@ class PublicProfileAndSecurityIntegrationTest extends ApiIntegrationTest {
                 .andExpect(jsonPath("$.details.banReason").value("IT ban"));
         assertThat(redis.hasKey(sessionKey(sessionId))).isFalse();
         c.get("/api/me").andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void banResponseOfCrossOriginRequestHasCorsHeaders() throws Exception {
+        String origin = corsProperties.allowedOrigins().get(0);
+        Client c = newClient();
+        String username = registerReader(c);
+        sql("UPDATE dbo.[User] SET Status = 'BANNED', BanReason = N'IT ban', BannedAt = SYSUTCDATETIME() "
+                + "WHERE Username = ?", username);
+
+        c.perform(MockMvcRequestBuilders.get("/api/me").header("Origin", origin))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCOUNT_BANNED"))
+                .andExpect(header().string("Access-Control-Allow-Origin", origin))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
     }
 
     @Test

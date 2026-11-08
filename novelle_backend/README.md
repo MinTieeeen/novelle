@@ -240,9 +240,10 @@ Client (React SPA, cookie SESSION + X-XSRF-TOKEN header)
   ▼
 Spring Security filter chain
   ├─ SessionRepositoryFilter   loads the session from Redis (spring:session:*)
-  ├─ CsrfFilter                checks the XSRF token on POST/PUT/PATCH/DELETE
+  ├─ CorsFilter                CORS headers for the allowed origins (APP_CORS_ORIGINS)
   ├─ UserStatusFilter          re-reads Role and Status of the logged-in user by primary key;
   │                            BANNED users are logged out (RB12), role changes apply at once
+  ├─ CsrfFilter                checks the XSRF token on POST/PUT/PATCH/DELETE
   └─ Authorization rules       /api/studio/** → AUTHOR, /api/admin/** → ADMIN, writes need login
   │
   ▼
