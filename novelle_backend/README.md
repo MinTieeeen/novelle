@@ -55,105 +55,70 @@ The full, always-current endpoint list is served by Swagger UI (see [Section 4.6
 
 ## 3. Project structure
 
-The code is organized **by feature**. Each feature package contains its own `controller`, `service`, `mapper`, `dto` and `model` sub-packages, and its SQL lives in a matching folder under `resources/mapper/`. One functional area can then be read and owned end to end.
+The code is organized **by layer**. Each layer package (`controller`, `service`, `mapper`, `model`, `dto`) is flat and holds the classes of every feature; class names carry the feature (`AuthController`, `StoryService`, `ChapterMapper`). Technical building blocks that are not a layer (Redis cache, rate limiting, view counters, jobs, security plumbing, MyBatis type handlers) live under `infrastructure/`. All MyBatis XML files are in `resources/mapper/`, one per mapper interface with the same name.
 
 ```
 novelle_backend/
 ├─ pom.xml
 ├─ mvnw, mvnw.cmd                    Maven wrapper
-├─ docker-compose.yml                Local SQL Server 2019 + Redis Stack
 ├─ database/
-│  ├─ bootstrap/                     Run once with an admin login
-│  │  ├─ 00_create_database.sql      CREATE DATABASE NovelleDB COLLATE Vietnamese_100_CI_AI
-│  │  └─ 01_create_logins_users.sql  novelle_migrator / novelle_app / novelle_readonly
-│  ├─ schema/                        Full schema, run in file-name order
-│  │  ├─ 01_tables.sql               18 tables: PK, FK, UQ, CHECK, DEFAULT
-│  │  ├─ 02_indexes.sql              Regular and filtered indexes
-│  │  ├─ 03_fulltext.sql             Full-text catalog and index (runs outside a transaction)
-│  │  ├─ 04_views.sql                vw_PublicStory, vw_AuthorStats
-│  │  ├─ 05_procedures.sql           sp_ApproveAuthorRequest, sp_RejectAuthorRequest, sp_PublishChapter,
-│  │  │                              sp_PublishScheduled, sp_DeleteStory, sp_FlushViews (+ table type)
-│  │  ├─ 06_triggers.sql             trg_Rating, trg_Follow, trg_AuthorFollow, trg_Chapter_Revision, …
-│  │  └─ 07_reference_data.sql       20 genres
-│  ├─ queries/                       01_insert.sql … 08_aggregate.sql, 99_check_invariants.sql
-│  └─ demo/                          Per-topic DBMS demo scripts (tagged "RDS OK" or "LOCAL ONLY")
+│  ├─ bootstrap/                     Database and logins, run once as the RDS master user
+│  ├─ schema/                        01_tables … 07_reference_data, run in file-name order
+│  ├─ queries/                       99_check_invariants.sql
+│  └─ seed/                          10_corpus … 90_finalize, 99_reset
 ├─ scripts/
-│  ├─ db-bootstrap.ps1 / .sh         Runs database/bootstrap (local Docker or RDS through the tunnel)
-│  ├─ db-apply-schema.ps1 / .sh      Runs database/schema/*.sql in order; --reset drops and recreates the database first
-│  └─ aws-tunnel.ps1 / .sh           Opens the SSM tunnels to RDS and Redis
+│  └─ db-seed.ps1 / .sh              Loads (or resets) the mock data
 └─ src/
    ├─ main/
    │  ├─ java/com/novelle/
    │  │  ├─ NovelleApplication.java
-   │  │  ├─ config/                  Security, Redis, Session, CORS, scheduling, OpenAPI, MyBatis
-   │  │  ├─ common/                  Error model, exception handler, paging, current-user helper,
-   │  │  │                           HTML sanitizer, MyBatis type handlers
-   │  │  ├─ auth/                    Register, login, logout, current user (/api/auth, /api/me)
-   │  │  ├─ user/                    AppUser model and profile updates
-   │  │  ├─ catalog/                 Genres and tags (read side, cached)
-   │  │  ├─ story/                   F1–F3: home, search, story detail, author page
-   │  │  ├─ reading/                 F4: chapter reading, reading progress
-   │  │  ├─ library/                 F5: history, story and author follows, reading lists
-   │  │  ├─ rating/                  F6: ratings and reviews
-   │  │  ├─ authorrequest/           F7: submit, view, cancel; approval logic shared with admin
-   │  │  ├─ studio/                  F8–F10: stories, volumes, chapters, drafts, revisions, dashboard
-   │  │  ├─ admin/                   F11–F13: users, author requests, moderation, genres and tags, statistics
-   │  │  ├─ cache/                   CacheService (cache-aside) and cache key definitions
-   │  │  ├─ views/                   ViewCounterService (Redis INCR) and ViewFlushJob (sp_FlushViews)
-   │  │  ├─ ratelimit/               @RateLimited annotation and Redis-backed interceptor
-   │  │  ├─ jobs/                    ScheduledPublishJob (sp_PublishScheduled)
-   │  │  └─ seed/                    MockDataGenerator, active only with the "seed" profile
+   │  │  ├─ config/                  Security, Redis, Session, CORS, scheduling, OpenAPI, MyBatis, Web MVC
+   │  │  ├─ controller/              REST controllers (AuthController, MeController, StoryController, …)
+   │  │  ├─ service/                 Business rules and transactions (AuthService, StoryService, …)
+   │  │  ├─ mapper/                  MyBatis @Mapper interfaces (UserMapper, StoryMapper, …)
+   │  │  ├─ model/                   Row objects (AppUser, Story, Chapter, …)
+   │  │  ├─ dto/                     Request and response records
+   │  │  ├─ exception/               ApiError, ApiException, ErrorCode, GlobalExceptionHandler
+   │  │  └─ infrastructure/
+   │  │     ├─ security/             SessionUser, CurrentUser, UserStatusFilter, JSON 401/403 handlers
+   │  │     ├─ mybatis/              Type handlers (ROWVERSION ↔ Base64, TVP for sp_FlushViews)
+   │  │     ├─ cache/                CacheService (cache-aside) and CacheKeys
+   │  │     ├─ ratelimit/            @RateLimited annotation and Redis-backed interceptor
+   │  │     ├─ views/                ViewCounterService (Redis INCR) and ViewFlushJob (sp_FlushViews)
+   │  │     ├─ jobs/                 ScheduledPublishJob (sp_PublishScheduled)
+   │  │     └─ html/                 HtmlSanitizer (jsoup allowlist)
    │  └─ resources/
    │     ├─ application.yml          Shared settings, including MyBatis configuration
-   │     ├─ application-local.yml    Local Docker
-   │     ├─ application-aws.yml      RDS + Redis through SSM tunnels
-   │     ├─ application-seed.yml     Seeder settings (scale, demo accounts)
-   │     ├─ mapper/                  MyBatis XML mappers, one folder per feature
-   │     │  ├─ story/StoryMapper.xml, StorySearchMapper.xml
-   │     │  ├─ studio/ChapterMapper.xml, StudioStoryMapper.xml, DashboardMapper.xml
-   │     │  ├─ admin/…, library/…, rating/…, …
-   │     └─ seed/                    Vietnamese word lists and paragraph corpus for mock content
-   └─ test/java/com/novelle/        Unit tests and Testcontainers integration tests
-```
-
-Example of one feature package:
-
-```
-studio/
-├─ controller/   StudioStoryController, StudioChapterController, StudioDashboardController
-├─ service/      StudioStoryService, ChapterService, DraftService, RevisionService, DashboardService
-├─ mapper/       StudioStoryMapper, ChapterMapper, VolumeMapper, RevisionMapper, DashboardMapper  (@Mapper interfaces)
-├─ dto/          Request and response records sent over HTTP
-└─ model/        Plain Java objects that MyBatis maps rows into (Story, Chapter, Volume, …)
+   │     ├─ application-local.yml    RDS + Redis from docker compose
+   │     ├─ application-aws.yml      RDS + Redis on EC2 through the SSM tunnel
+   │     └─ mapper/                  MyBatis XML mappers (AuthMapper.xml, UserMapper.xml, StoryMapper.xml, …)
+   └─ test/java/com/novelle/        Unit and web-slice tests
 ```
 
 ### What each package does
 
 | Package | Responsibility |
 |---|---|
-| `config` | Builds the security filter chain, session cookie, CSRF, CORS, `RedisTemplate` serializers, scheduler thread pool and OpenAPI metadata. `MyBatisConfig` registers the custom type handlers. |
-| `common` | `ApiError` JSON format, `GlobalExceptionHandler` (maps validation, 401, 403, 404, 409, 429 errors), `PageRequest`/`PageResponse`, `CurrentUser` accessor, `HtmlSanitizer`, and MyBatis type handlers (`RowVersionTypeHandler` for `ROWVERSION` ↔ Base64 string, `ViewDeltaTableTypeHandler` for the TVP of `sp_FlushViews`). |
-| `auth` | Registration (always `READER`), login with BCrypt, logout, `GET /api/me`. Also contains `UserStatusFilter` (see [Section 5.1](#51-request-pipeline)). |
-| `user` | `AppUser` model, profile and avatar updates. |
-| `catalog` | Genre and tag lookups used by search filters and the studio, cached in Redis. |
-| `story` | Public read side. Queries select from `vw_PublicStory` so drafts, hidden and deleted stories never leak (RB3). Search uses MyBatis dynamic SQL to combine full-text search with optional filters. |
-| `reading` | Returns a published chapter, counts the view in Redis, and upserts `ReadingHistory`. |
-| `library` | Follow and unfollow stories and authors, reading history list, reading list CRUD. |
-| `rating` | One rating per user per story. The `trg_Rating` trigger keeps `Story.RatingAvg` and `Story.RatingCount` in sync. |
-| `authorrequest` | Reader side of F7 and the shared approve/reject service that calls `sp_ApproveAuthorRequest` / `sp_RejectAuthorRequest`. |
-| `studio` | Author-only CRUD with ownership checks (RB1, RB2), optimistic locking on chapters, Redis draft autosave, publish and schedule, revision restore, dashboard aggregates. |
-| `admin` | Admin-only endpoints: user management, review queue, moderation, catalog management, statistics. |
-| `cache` | `CacheService.getOrLoad(key, ttl, loader)` and `evict(...)`; all key names live in `CacheKeys`. |
-| `views` | `ViewCounterService.increment(...)` and `ViewFlushJob`, which moves counters from Redis to SQL Server every 60 seconds. |
-| `ratelimit` | Fixed-window counters (`rl:publish`, `rl:rating`, `rl:login`) applied with `@RateLimited`. |
-| `jobs` | Scheduled tasks that replace SQL Server Agent, which RDS Express does not have. |
-| `seed` | Generates deterministic mock data at `small`, `medium` or `large` scale, then recomputes derived columns. |
+| `config` | Builds the security filter chain, session cookie, CSRF, CORS, `RedisTemplate` serializers, scheduler thread pool, OpenAPI metadata and the Web MVC interceptors. |
+| `controller` | Maps HTTP to service calls and validates request DTOs. No business logic. |
+| `service` | Business rules RB1–RB16 and ownership checks (RB1, RB2), `@Transactional` boundaries, cache reads and evictions. |
+| `mapper` | MyBatis interfaces; the SQL is in the XML file of the same name. |
+| `model` | Plain Java objects that MyBatis maps rows into. |
+| `dto` | Request and response records sent over HTTP, plus `PageRequest` / `PageResponse`. |
+| `exception` | `ApiError` JSON format and `GlobalExceptionHandler` (validation, 401, 403, 404, 409, 429, stored-procedure error numbers). |
+| `infrastructure.security` | Session principal, current-user accessor, `UserStatusFilter` (see [Section 5.1](#51-request-pipeline)). |
+| `infrastructure.mybatis` | `RowVersionTypeHandler` and `ViewDeltaTableTypeHandler`. |
+| `infrastructure.cache` | `CacheService.getOrLoad(key, ttl, loader)` and `evict(...)`; all key names live in `CacheKeys`. |
+| `infrastructure.ratelimit` | Fixed-window counters (`rl:login`, `rl:register`, `rl:publish`, `rl:rating`) applied with `@RateLimited`. |
+| `infrastructure.views` | Moves view counters from Redis to SQL Server every 60 seconds. |
+| `infrastructure.jobs` | Scheduled tasks that replace SQL Server Agent, which RDS Express does not have. |
+| `infrastructure.html` | Sanitizes chapter HTML before it is saved. |
 
 ### MyBatis usage rules
 
 | Need | How it is written |
 |---|---|
-| Simple CRUD | `<select>`, `<insert useGeneratedKeys="true" keyProperty="…">`, `<update>`, `<delete>` in the feature's XML mapper |
+| Simple CRUD | `<select>`, `<insert useGeneratedKeys="true" keyProperty="…">`, `<update>`, `<delete>` in the mapper's XML file |
 | Multi-condition search | Dynamic SQL with `<where>`, `<if>`, `<foreach>` (genre and tag lists); never string concatenation |
 | Paging | `ORDER BY … OFFSET #{offset} ROWS FETCH NEXT #{size} ROWS ONLY`, written in the SQL |
 | Joins (story detail, table of contents) | `<resultMap>` with `<association>` and `<collection>` |
@@ -205,7 +170,7 @@ Main MyBatis settings in `application.yml`:
 mybatis:
   mapper-locations: classpath:mapper/**/*.xml
   type-aliases-package: com.novelle
-  type-handlers-package: com.novelle.common.mybatis
+  type-handlers-package: com.novelle.infrastructure.mybatis
   configuration:
     default-statement-timeout: 30
     jdbc-type-for-null: NULL
@@ -290,7 +255,7 @@ Controller      validates the request DTO (Bean Validation) and maps it to a ser
 Service         applies business rules (ownership, RB1–RB16), opens the @Transactional boundary,
   │             and reads or evicts the Redis cache
   ▼
-Mapper          MyBatis interface; the SQL is in resources/mapper/<feature>/*Mapper.xml
+Mapper          MyBatis interface; the SQL is in resources/mapper/*Mapper.xml
   │
   ▼
 SQL Server      constraints, triggers and stored procedures enforce invariants inside the database

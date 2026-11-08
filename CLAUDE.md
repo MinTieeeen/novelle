@@ -31,6 +31,12 @@ Specification (outside this repo, in `../docs/`): `data-dictionary.md` (tables, 
 - **Mock data only.** Never import the AS-IS book data (`../book-data-20260928`). `../StoryWeb_AS_IS` is a reference for field naming only.
 - Transaction and concurrency demos use: `sp_PublishChapter`, `sp_ApproveAuthorRequest` (two admins racing), rating hot-row updates, view counters, chapter `ROWVERSION` edits.
 
+## Module workflow
+
+Every feature module goes: **scope (confirmed) → plan → spec doc `../docs/module-<name>.md` (Vietnamese) → code phase by phase → user reviews the code → unit + integration tests → report and docs sync**. The user approves each step; never test against the shared RDS/Redis before the code review. Details, spec template and report format: [.claude/rules/module-workflow.md](.claude/rules/module-workflow.md).
+
+Path-scoped rules live in [.claude/rules/](.claude/rules/) (backend Java, MyBatis, testing, database scripts); the part guides say when to read each one.
+
 ## Infrastructure
 
 - **SQL Server = AWS RDS only** (SQL Server 2019 Express, free tier, t3.micro, public access). **Never add a local SQL Server container.** Database `NovelleDB`; logins `novelle_migrator` (DDL), `novelle_app` (application), `novelle_readonly`.
@@ -48,6 +54,7 @@ Specification (outside this repo, in `../docs/`): `data-dictionary.md` (tables, 
 ```
 novelle/
 ├─ CLAUDE.md            this file
+├─ .claude/rules/       detailed rules, loaded by path (workflow, backend, testing, database)
 ├─ .env.example         settings template (copy to .env)
 ├─ docker-compose.yml   redis (+ lab image, profile "lab")
 ├─ docker/              lab Dockerfile, docker README
