@@ -1,7 +1,9 @@
 """Thin wrappers around pyodbc and redis-py used by every scenario.
 
 SqlServer  one autocommit connection to RDS + helpers (query, scalar, exec, exec_file with GO batches).
-           `new_connection()` opens extra connections for concurrency scenarios.
+           `new_connection()` opens extra connections for concurrency scenarios. On a connection opened
+           with autocommit=False, statements stay in one transaction until commit() / rollback()
+           (closing the connection without commit() rolls back).
 RedisClient  a redis-py client plus a key namespace "lab:<namespace>:" so lab data never mixes with
            the application's keys, and `cleanup()` removes everything in that namespace.
 
@@ -10,6 +12,7 @@ Parameters are always passed separately (`?` placeholders for pyodbc), never for
 from __future__ import annotations
 
 import re
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
@@ -62,7 +65,7 @@ class SqlServer:
     # --- running SQL -------------------------------------------------------------------------
     def query(self, sql: str, *params: Any) -> list[dict[str, Any]]:
         """Run a statement and return the first result set as a list of dicts."""
-        with self.conn.cursor() as cur:
+        with closing(self.conn.cursor()) as cur:   # closing(): a pyodbc cursor's own __exit__ COMMITs
             cur.execute(sql, *params)
             while cur.description is None and cur.nextset():   # skip row counts of earlier statements
                 pass
@@ -77,7 +80,7 @@ class SqlServer:
 
     def exec(self, sql: str, *params: Any) -> int:
         """Run a statement that returns no rows; returns the affected row count (-1 if unknown)."""
-        with self.conn.cursor() as cur:
+        with closing(self.conn.cursor()) as cur:   # closing(): a pyodbc cursor's own __exit__ COMMITs
             cur.execute(sql, *params)
             count = cur.rowcount
             while cur.nextset():
@@ -95,7 +98,7 @@ class SqlServer:
         """Run a statement and also return the informational messages (PRINT, SET STATISTICS ...)."""
         rows: list[dict[str, Any]] = []
         texts: list[str] = []
-        with self.conn.cursor() as cur:
+        with closing(self.conn.cursor()) as cur:   # closing(): a pyodbc cursor's own __exit__ COMMITs
             cur.execute(sql, *params)
             while True:
                 texts.extend(m[1] for m in (cur.messages or []))
@@ -105,6 +108,13 @@ class SqlServer:
                 if not cur.nextset():
                     break
         return rows, texts
+
+    # --- transactions (only meaningful on a new_connection(autocommit=False)) ------------------------
+    def commit(self) -> None:
+        self.conn.commit()
+
+    def rollback(self) -> None:
+        self.conn.rollback()
 
     def close(self) -> None:
         try:

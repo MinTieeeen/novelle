@@ -60,7 +60,7 @@ def make_results(tmp_path: Path) -> Path:
 
 def test_payload_contains_results_but_no_connection_details(tmp_path):
     results = make_results(tmp_path)
-    loaded = loader.load("r1", results)
+    loaded = loader.load_topic_reports(results, run_id="r1")[0]
     loaded.result.environment = Environment(target="local", sqlserver_version="15.0", redis_version="7.4.2",
                                             sql_database="NovelleDB", redis_endpoint="redis:6379")
     payload = gemini.build_payload(loaded.result.topics[0], loaded.result.environment, results, llm())
@@ -72,7 +72,7 @@ def test_payload_contains_results_but_no_connection_details(tmp_path):
 
 def test_generate_uses_cache_and_retries(tmp_path):
     results = make_results(tmp_path)
-    loaded = loader.load("r1", results)
+    loaded = loader.load_topic_reports(results, run_id="r1")[0]
     client = FakeClient(failures=[503, 502])          # overloaded: retried on the same model
     sleeps = []
     res = gemini.generate(loaded.result.topics, loaded.result.environment, results, llm("m"),
@@ -93,7 +93,7 @@ def test_generate_uses_cache_and_retries(tmp_path):
 
 def test_errors_are_reported_per_topic(tmp_path):
     results = make_results(tmp_path)
-    loaded = loader.load("r1", results)
+    loaded = loader.load_topic_reports(results, run_id="r1")[0]
     res = gemini.generate(loaded.result.topics, loaded.result.environment, results, llm("m"),
                           client=FakeClient(failures=[400]), sleep=lambda s: None)
     assert res.commentary == {} and "400" in res.errors["demo"]
@@ -101,7 +101,7 @@ def test_errors_are_reported_per_topic(tmp_path):
 
 def test_report_puts_comments_in_tabs_and_comparison_at_topic_end(tmp_path):
     results = make_results(tmp_path)
-    loaded = loader.load("r1", results)
+    loaded = loader.load_topic_reports(results, run_id="r1")[0]
     res = gemini.generate(loaded.result.topics, loaded.result.environment, results, llm("m"),
                           client=FakeClient())
     html = builder.render(loaded, tmp_path / "reports" / "r1.html", res.commentary)
@@ -132,7 +132,7 @@ class PerModelClient(FakeClient):
 
 def test_fallback_model_then_stale_cache(tmp_path):
     results = make_results(tmp_path)
-    loaded = loader.load("r1", results)
+    loaded = loader.load_topic_reports(results, run_id="r1")[0]
     cfg = llm("main", fallbacks=("backup",))
     args = dict(sleep=lambda s: None)
 
@@ -169,7 +169,7 @@ class QuotaClient(PerModelClient):
 
 def test_used_up_quota_switches_model_at_once_and_for_the_rest_of_the_run(tmp_path):
     results = make_results(tmp_path)
-    loaded = loader.load("r1", results)
+    loaded = loader.load_topic_reports(results, run_id="r1")[0]
     first = loaded.result.topics[0]
     second = first.model_copy(deep=True)
     second.topic.id = "demo2"
@@ -187,7 +187,7 @@ def test_used_up_quota_switches_model_at_once_and_for_the_rest_of_the_run(tmp_pa
 
 def test_all_models_out_of_quota_is_reported(tmp_path):
     results = make_results(tmp_path)
-    loaded = loader.load("r1", results)
+    loaded = loader.load_topic_reports(results, run_id="r1")[0]
     cfg = llm("a", fallbacks=("b",))
     res = gemini.generate(loaded.result.topics, loaded.result.environment, results, cfg,
                           client=QuotaClient(down={"a", "b"}))
