@@ -89,6 +89,15 @@ app:
       progress:
         max-requests: ${RL_PROGRESS_MAX:120}
         window: ${RL_PROGRESS_WINDOW:60s}
+      rating:
+        max-requests: ${RL_RATING_MAX:10}
+        window: ${RL_RATING_WINDOW:60s}
+      follow:
+        max-requests: ${RL_FOLLOW_MAX:60}
+        window: ${RL_FOLLOW_WINDOW:60s}
+      author-request:
+        max-requests: ${RL_AUTHOR_REQUEST_MAX:3}
+        window: ${RL_AUTHOR_REQUEST_WINDOW:1d}
   # Cache-aside entries in Redis (CacheService, keys in CacheKeys); SQL Server stays the source of truth.
   cache:
     ttl:
@@ -111,3 +120,13 @@ app:
   catalog:
     home-size: ${CATALOG_HOME_SIZE:12}
     top-rated-min-ratings: ${CATALOG_TOP_RATED_MIN_RATINGS:10}
+  # Personal library (F5): reading lists per user, stories per list.
+  library:
+    max-lists: ${READING_LIST_MAX_LISTS:50}
+    max-items: ${READING_LIST_MAX_ITEMS:500}
+  # Author requests (F7/F11): optional Redis lock taken before sp_ApproveAuthorRequest / sp_RejectAuthorRequest,
+  # only to compare with the UPDLOCK inside the procedures (concurrency demo). The procedures stay the real guard.
+  author-request:
+    redis-lock:
+      enabled: ${APP_DEMO_REDIS_LOCK:false}
+      ttl: ${AUTHOR_REQUEST_LOCK_TTL:5s}

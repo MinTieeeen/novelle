@@ -42,7 +42,24 @@ public enum ErrorCode {
 
     // reading (chapters, reading progress)
     CHAPTER_NOT_FOUND(HttpStatus.NOT_FOUND, "Chapter not found."),
-    CHAPTER_NOT_IN_STORY(HttpStatus.BAD_REQUEST, "The chapter does not belong to this story.");
+    CHAPTER_NOT_IN_STORY(HttpStatus.BAD_REQUEST, "The chapter does not belong to this story."),
+
+    // library (follows, reading lists) and ratings
+    CANNOT_FOLLOW_SELF(HttpStatus.BAD_REQUEST, "You cannot follow yourself."),
+    INVALID_ITEM_ORDER(HttpStatus.BAD_REQUEST, "The new order must list every story of the reading list exactly once."),
+    CANNOT_RATE_OWN_STORY(HttpStatus.FORBIDDEN, "Authors cannot rate their own stories."),
+    ADMIN_CANNOT_RATE(HttpStatus.FORBIDDEN, "Administrators cannot rate stories."),
+    READING_LIST_NOT_FOUND(HttpStatus.NOT_FOUND, "Reading list not found."),
+    STORY_NOT_IN_LIST(HttpStatus.NOT_FOUND, "The story is not in this reading list."),
+    READING_LIST_NAME_TAKEN(HttpStatus.CONFLICT, "You already have a reading list with this name."),
+    READING_LIST_LIMIT(HttpStatus.CONFLICT, "Reading list limit reached."),
+    STORY_ALREADY_IN_LIST(HttpStatus.CONFLICT, "The story is already in this reading list."),
+
+    // author requests
+    ONLY_READER_CAN_REQUEST(HttpStatus.FORBIDDEN, "Only readers can request to become an author."),
+    AUTHOR_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "Author request not found."),
+    REQUEST_ALREADY_PENDING(HttpStatus.CONFLICT, "You already have a pending author request."),
+    REVIEW_IN_PROGRESS(HttpStatus.CONFLICT, "Another administrator is reviewing this request; try again shortly.");
 
     private final HttpStatus status;
     private final String defaultMessage;

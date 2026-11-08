@@ -69,8 +69,13 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/studio/**").hasRole("AUTHOR")
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                // personal state under otherwise public GET paths (M4): must come before the permitAll below
+                .requestMatchers(HttpMethod.GET, "/api/stories/*/ratings/me", "/api/stories/*/follow",
+                        "/api/authors/*/follow").authenticated()
+                // /api/reading-lists/* is public: the service shows public lists to anyone, private ones to the owner
                 .requestMatchers(HttpMethod.GET, "/api/home", "/api/stories/**", "/api/authors/**",
-                        "/api/chapters/**", "/api/genres/**", "/api/tags/**", "/api/users/**").permitAll()
+                        "/api/chapters/**", "/api/genres/**", "/api/tags/**", "/api/users/**",
+                        "/api/reading-lists/*").permitAll()
                 .anyRequest().authenticated());
         return http.build();
     }
