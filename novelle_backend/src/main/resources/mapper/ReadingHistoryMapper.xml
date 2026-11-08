@@ -48,4 +48,41 @@
                           AND c.Status = 'PUBLISHED' AND c.IsDeleted = 0
         WHERE h.UserId = #{userId} AND h.StoryId = #{storyId}
     </select>
+
+    <!-- ===================== library history (M4) ===================== -->
+
+    <!-- the story card of M2 plus my position; lastChapter stays null when the chapter is no longer public -->
+    <resultMap id="HistoryItemMap" type="com.novelle.model.HistoryItem"
+               extends="com.novelle.mapper.StorySearchMapper.StoryCardMap" autoMapping="true">
+        <association property="lastChapter" javaType="com.novelle.model.ChapterToc"
+                     columnPrefix="Last_" notNullColumn="ChapterId" autoMapping="true"/>
+    </resultMap>
+
+    <!--
+      join: vw_PublicStory (inner, D3: only public stories) ⋈ ReadingHistory ⟕ Chapter (only public chapters).
+      Seeks IX_ReadingHistory_User_Updated (UserId, UpdatedAt DESC).
+    -->
+    <select id="pageHistory" resultMap="HistoryItemMap">
+        SELECT <include refid="com.novelle.mapper.StorySearchMapper.cardColumns"/>,
+               h.ScrollPercent, h.UpdatedAt AS ReadAt,
+               c.ChapterId AS Last_ChapterId,
+               c.ChapterNo AS Last_ChapterNo,
+               c.Title     AS Last_Title
+        <include refid="com.novelle.mapper.StorySearchMapper.cardFrom"/>
+        JOIN dbo.ReadingHistory h ON h.StoryId = s.StoryId AND h.UserId = #{userId}
+        LEFT JOIN dbo.Chapter c   ON c.ChapterId = h.LastChapterId AND c.Status = 'PUBLISHED' AND c.IsDeleted = 0
+        ORDER BY h.UpdatedAt DESC, s.StoryId DESC
+        OFFSET #{offset} ROWS FETCH NEXT #{size} ROWS ONLY
+    </select>
+
+    <select id="countHistory" resultType="long">
+        SELECT COUNT(*)
+        FROM dbo.ReadingHistory h
+        JOIN dbo.vw_PublicStory s ON s.StoryId = h.StoryId
+        WHERE h.UserId = #{userId}
+    </select>
+
+    <delete id="deleteHistory">
+        DELETE dbo.ReadingHistory WHERE UserId = #{userId} AND StoryId = #{storyId}
+    </delete>
 </mapper>

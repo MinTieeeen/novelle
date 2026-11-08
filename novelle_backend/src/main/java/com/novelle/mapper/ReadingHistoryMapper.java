@@ -1,15 +1,17 @@
 package com.novelle.mapper;
 
 import java.math.BigDecimal;
+import java.util.List;
 
+import com.novelle.model.HistoryItem;
 import com.novelle.model.ReadingProgress;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 /**
  * Reading position per (user, story) (RB5: the primary key allows one row; the service checks that the chapter
- * belongs to the story). SQL: resources/mapper/ReadingHistoryMapper.xml. The library list / delete of M4 will
- * be added here.
+ * belongs to the story). SQL: resources/mapper/ReadingHistoryMapper.xml. Also the reading-history list of the
+ * library (M4, F5).
  */
 @Mapper
 public interface ReadingHistoryMapper {
@@ -29,4 +31,14 @@ public interface ReadingHistoryMapper {
 
     /** Stored position, or null when there is none or its chapter is no longer public. */
     ReadingProgress findProgress(@Param("userId") int userId, @Param("storyId") int storyId);
+
+    /* ---------- library (M4) ---------- */
+
+    /** My history over public stories only, most recently read first (IX_ReadingHistory_User_Updated). */
+    List<HistoryItem> pageHistory(@Param("userId") int userId, @Param("offset") int offset, @Param("size") int size);
+
+    long countHistory(@Param("userId") int userId);
+
+    /** Any story, public or not (docs/module-library.md D2). */
+    int deleteHistory(@Param("userId") int userId, @Param("storyId") int storyId);
 }
