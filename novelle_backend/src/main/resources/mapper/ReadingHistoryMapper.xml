@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.ReadingHistoryMapper">
+
+    <select id="existsPublicStory" resultType="boolean">
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.vw_PublicStory WHERE StoryId = #{storyId}) THEN 1 ELSE 0 END
+    </select>
+
+    <!--
+      insert or update in one statement (module-reading D2). WITH (HOLDLOCK) keeps the key range locked from the
+      lookup to the write, so two tabs opening the story for the first time cannot both INSERT (PK violation).
+      OUTPUT without INTO is allowed: ReadingHistory has no trigger. One WHEN MATCHED with CASE: SQL Server
+      rejects two WHEN MATCHED ... UPDATE clauses in one MERGE (Msg 10714).
+      A <select> because it returns a row; flushCache="true" so MyBatis never answers a second call with the
+      same arguments from the session cache (integration tests share one SqlSession).
+    -->
+    <select id="touch" resultType="java.math.BigDecimal" flushCache="true" useCache="false">
+        MERGE dbo.ReadingHistory WITH (HOLDLOCK) AS t
+        USING (SELECT #{userId} AS UserId, #{storyId} AS StoryId, #{chapterId} AS ChapterId) AS src
+           ON t.UserId = src.UserId AND t.StoryId = src.StoryId
+        WHEN MATCHED THEN
+            UPDATE SET ScrollPercent = CASE WHEN t.LastChapterId = src.ChapterId THEN t.ScrollPercent ELSE 0 END,
+                       LastChapterId = src.ChapterId,
+                       UpdatedAt     = SYSUTCDATETIME()
+        WHEN NOT MATCHED THEN
+            INSERT (UserId, StoryId, LastChapterId) VALUES (src.UserId, src.StoryId, src.ChapterId)
+        OUTPUT inserted.ScrollPercent;
+    </select>
+
+    <update id="upsertProgress">
+        MERGE dbo.ReadingHistory WITH (HOLDLOCK) AS t
+        USING (SELECT #{userId} AS UserId, #{storyId} AS StoryId, #{chapterId} AS ChapterId,
+                      CAST(#{scrollPercent} AS DECIMAL(5,2)) AS Scroll) AS src
+           ON t.UserId = src.UserId AND t.StoryId = src.StoryId
+        WHEN MATCHED THEN
+            UPDATE SET LastChapterId = src.ChapterId, ScrollPercent = src.Scroll, UpdatedAt = SYSUTCDATETIME()
+        WHEN NOT MATCHED THEN
+            INSERT (UserId, StoryId, LastChapterId, ScrollPercent)
+            VALUES (src.UserId, src.StoryId, src.ChapterId, src.Scroll);
+    </update>
+
+    <!-- join: the stored chapter must still be public (a deleted / unpublished chapter means "no position") -->
+    <select id="findProgress" resultType="com.novelle.model.ReadingProgress">
+        SELECT h.StoryId, h.LastChapterId AS ChapterId, c.ChapterNo, c.Title AS ChapterTitle,
+               h.ScrollPercent, h.UpdatedAt
+        FROM dbo.ReadingHistory h
+        JOIN dbo.Chapter c ON c.ChapterId = h.LastChapterId
+                          AND c.Status = 'PUBLISHED' AND c.IsDeleted = 0
+        WHERE h.UserId = #{userId} AND h.StoryId = #{storyId}
+    </select>
+</mapper>

@@ -22,4 +22,12 @@ public final class CacheKeys {
     public static String story(int storyId) {
         return "cache:story:" + storyId;
     }
+
+    /**
+     * Heavy part of a published chapter (title, content, word count, publish time) for GET /api/chapters/{id}.
+     * Visibility, story, volume and prev/next are read from SQL on every request (docs/module-reading.md D3).
+     */
+    public static String chapter(long chapterId) {
+        return "cache:chapter:" + chapterId;
+    }
 }

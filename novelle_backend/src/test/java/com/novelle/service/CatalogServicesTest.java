@@ -44,7 +44,8 @@ import org.junit.jupiter.api.Test;
 class CatalogServicesTest {
 
     private static final CacheTtlProperties TTL =
-            new CacheTtlProperties(Duration.ofHours(1), Duration.ofMinutes(2), Duration.ofMinutes(10));
+            new CacheTtlProperties(Duration.ofHours(1), Duration.ofMinutes(2), Duration.ofMinutes(10),
+                    Duration.ofMinutes(30));
 
     private CacheService cache;
     private CatalogMapper catalogMapper;

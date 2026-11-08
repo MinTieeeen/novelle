@@ -38,7 +38,11 @@ public enum ErrorCode {
 
     // catalog (public reading side)
     STORY_NOT_FOUND(HttpStatus.NOT_FOUND, "Story not found."),
-    AUTHOR_NOT_FOUND(HttpStatus.NOT_FOUND, "Author not found.");
+    AUTHOR_NOT_FOUND(HttpStatus.NOT_FOUND, "Author not found."),
+
+    // reading (chapters, reading progress)
+    CHAPTER_NOT_FOUND(HttpStatus.NOT_FOUND, "Chapter not found."),
+    CHAPTER_NOT_IN_STORY(HttpStatus.BAD_REQUEST, "The chapter does not belong to this story.");
 
     private final HttpStatus status;
     private final String defaultMessage;

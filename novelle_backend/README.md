@@ -110,7 +110,7 @@ novelle_backend/
 | `infrastructure.mybatis` | `RowVersionTypeHandler` and `ViewDeltaTableTypeHandler`. |
 | `infrastructure.cache` | `CacheService.getOrLoad(key, ttl, loader)` and `evict(...)`; all key names live in `CacheKeys`. |
 | `infrastructure.ratelimit` | Fixed-window counters (`rl:login`, `rl:register`, `rl:publish`, `rl:rating`) applied with `@RateLimited`. |
-| `infrastructure.views` | Moves view counters from Redis to SQL Server every 60 seconds. |
+| `infrastructure.views` | Counts views on Redis (Lua scripts in `resources/redis/`) and moves them to SQL Server every 60 seconds (`ViewFlusher`, `ViewFlushJob`). |
 | `infrastructure.jobs` | Scheduled tasks that replace SQL Server Agent, which RDS Express does not have. |
 | `infrastructure.html` | Sanitizes chapter HTML before it is saved. |
 
@@ -155,6 +155,11 @@ All settings of the project live in ONE file, `novelle/.env` (template: `novelle
 | `REDIS_PASSWORD` | empty locally | Application (required on AWS) |
 | `APP_CORS_ORIGINS` | `http://localhost:5173` | CORS config |
 | `SEED_DEMO_PASSWORD` | — | Password given to the demo accounts by the seeder |
+| `CACHE_CHAPTER_TTL` | `30m` | `cache:chapter:{id}` (F4) |
+| `VIEWS_KEY_PREFIX`, `VIEWS_SEEN_TTL`, `VIEWS_ZONE` | `views:`, `30m`, `Asia/Ho_Chi_Minh` | View counters: key prefix, one view per viewer and chapter in this window, calendar day of a view |
+| `VIEWS_FLUSH_INTERVAL`, `VIEWS_FLUSH_BATCH`, `VIEWS_FLUSH_MAX_BATCHES` | `60s`, `1000`, `20` | `ViewFlushJob` |
+| `JOBS_ENABLED` | `true` | `false` turns off every `@Scheduled` job (view flush): only for tests and local checks, counters then stay in Redis |
+| `RL_PROGRESS_MAX`, `RL_PROGRESS_WINDOW` | `120`, `60s` | Rate limit of `PUT /api/reading-progress/{storyId}` per user |
 
 ### 4.3 Spring profiles
 
@@ -275,16 +280,19 @@ Sessions use the default (non-indexed) Spring Session Redis repository, so they 
 
 ### 5.3 Reading a chapter (F4)
 
-1. Load the chapter from `cache:chapter:{id}`, or from SQL Server if missing. Only `PUBLISHED`, non-deleted chapters of a visible story are returned.
-2. `ViewCounterService` runs `INCR views:chapter:{id}`, `INCR views:story:{storyId}` and `SADD views:dirty ...` in one pipeline.
-3. For logged-in users, `ReadingHistoryMapper.upsert` runs a `MERGE` on `ReadingHistory(UserId, StoryId, LastChapterId, ScrollPercent)`. The frontend also calls `PUT /api/reading-progress/{storyId}` while the user scrolls.
+Spec: [`../../docs/module-reading.md`](../../docs/module-reading.md). `GET /api/chapters/{chapterId}` (`ChapterReadService.read`):
+
+1. `ChapterMapper.findPublicNav` runs on **every** request: `Chapter ⋈ vw_PublicStory ⟕ Volume` plus two correlated subqueries for the previous / next public chapter. No row → 404 `CHAPTER_NOT_FOUND`, so hiding or deleting a story or chapter takes effect even while its content is cached.
+2. Title, content, word count and publish time come from `cache:chapter:{id}` (30 min), loaded by `findContent` on a miss.
+3. For a logged-in user, `ReadingHistoryMapper.touch` runs one `MERGE ReadingHistory WITH (HOLDLOCK) … OUTPUT inserted.ScrollPercent`: another chapter moves the position there with scroll 0, the same chapter keeps the scroll, which is returned as `myScrollPercent`. The frontend calls `PUT /api/reading-progress/{storyId}` while the user scrolls (the service checks that the chapter belongs to the story, RB5).
+4. `ViewCounterService` runs `views-record.lua`: `SET views:seen:{chapterId}:{viewer} NX EX 1800`, and only if that succeeds `INCR views:story:{id}:{yyyyMMdd}`, `INCR views:chapter:{id}:{yyyyMMdd}`, `SADD views:dirty`. The day is the Vietnam calendar day of the view. Redis down → the view is skipped, the page still loads.
 
 ### 5.4 View counter flush (write-behind)
 
-`ViewFlushJob` runs every 60 seconds:
-1. Atomically takes the members of `views:dirty` and reads and resets their counters (`GETDEL`).
-2. Passes the batch to `sp_FlushViews` as a table-valued parameter (built by `ViewDeltaTableTypeHandler` from `SQLServerDataTable`). The procedure adds the values to `Story.ViewCount`, `Chapter.ViewCount` and `StoryViewDaily` in one transaction.
-3. If the call fails, the counts are added back to Redis so no views are lost. If Redis itself is lost, at most about 60 seconds of views are lost; this is the documented RPO for this data.
+`ViewFlushJob` calls `ViewFlusher.flush()` 60 seconds after the previous run ended (`fixedDelay`), and once more on a graceful shutdown. It exists only when `JOBS_ENABLED=true`; tests call `ViewFlusher` directly.
+1. `views-drain.lua` takes up to 1000 members with `SPOP views:dirty` and `GETDEL`s their counters in one script, so a view arriving meanwhile starts a new counter and several instances never flush the same counter.
+2. The batch goes to `sp_FlushViews` as the table-valued parameter `dbo.ViewDeltaTable` (`ViewDeltaBatchTypeHandler` builds a `SQLServerDataTable` and calls `setStructured`). The procedure adds the values to `Story.ViewCount`, `Chapter.ViewCount` and `StoryViewDaily` in one transaction.
+3. If the call fails, `views-restore.lua` adds the counts back (`INCRBY` + `SADD`). If Redis itself is lost, at most about 60 seconds of views are lost; this is the documented RPO for this data.
 
 ### 5.5 Studio: writing and publishing chapters (F8–F9)
 
