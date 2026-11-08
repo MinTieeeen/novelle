@@ -13,6 +13,7 @@ import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.novelle.TestProperties;
 import com.novelle.infrastructure.cache.CacheKeys;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
@@ -42,7 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
  * database is left unchanged (only IDENTITY values are consumed). Redis keys created by a test (sessions,
  * rate-limit counters of its private client IP) are deleted after it.
  */
-@SpringBootTest
+@SpringBootTest(properties = {TestProperties.JOBS_OFF, TestProperties.VIEWS_PREFIX})
 @AutoConfigureMockMvc
 @Transactional
 abstract class ApiIntegrationTest {
@@ -61,6 +62,7 @@ abstract class ApiIntegrationTest {
     @Autowired private SqlSessionTemplate sqlSession;
 
     private final List<Client> clients = new ArrayList<>();
+    private final List<Integer> registeredUserIds = new ArrayList<>();
     private String fixtureHash;
 
     /**
@@ -82,13 +84,23 @@ abstract class ApiIntegrationTest {
             }
             c.sessionIds.forEach(id -> redis.delete(sessionKey(id)));
         }
+        // per-user limits (@RateLimited scope USER): rl:<name>:u<userId>
+        for (Integer userId : registeredUserIds) {
+            Set<String> keys = redis.keys("rl:*:u" + userId);
+            if (keys != null && !keys.isEmpty()) {
+                redis.delete(keys);
+            }
+        }
         deleteCacheEntries();
     }
 
+    /** Removes {@code cache:*} and the test view keys ({@code it:views:*}, see TestProperties). */
     protected void deleteCacheEntries() {
-        Set<String> keys = redis.keys(CacheKeys.PREFIX + "*");
-        if (keys != null && !keys.isEmpty()) {
-            redis.delete(keys);
+        for (String pattern : List.of(CacheKeys.PREFIX + "*", TestProperties.VIEWS_PREFIX_VALUE + "*")) {
+            Set<String> keys = redis.keys(pattern);
+            if (keys != null && !keys.isEmpty()) {
+                redis.delete(keys);
+            }
         }
     }
 
@@ -111,6 +123,8 @@ abstract class ApiIntegrationTest {
     protected String registerReader(Client client) throws Exception {
         String username = uniqueUsername();
         client.csrf().post("/api/auth/register", registration(username)).andExpect(status().isCreated());
+        registeredUserIds.add(jdbc.queryForObject("SELECT UserId FROM dbo.[User] WHERE Username = ?",
+                Integer.class, username));
         return username;
     }
 
@@ -198,6 +212,10 @@ abstract class ApiIntegrationTest {
 
         ResultActions put(String url, Object body) throws Exception {
             return send(withBody(MockMvcRequestBuilders.put(url), body), true);
+        }
+
+        ResultActions putWithoutCsrf(String url, Object body) throws Exception {
+            return send(withBody(MockMvcRequestBuilders.put(url), body), false);
         }
 
         /** Any request built by the test (extra headers, query params) with this client's cookies, IP and CSRF header. */
