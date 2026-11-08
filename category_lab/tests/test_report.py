@@ -34,6 +34,11 @@ def save(results: Path, r: RunResult) -> None:
     (results / r.run_id / "run.json").write_text(r.model_dump_json(), encoding="utf-8")
 
 
+def one_report(results: Path) -> loader.LoadedReport:
+    [report] = loader.load_topic_reports(results, run_id="r1")
+    return report
+
+
 def test_pairs_and_verdicts():
     sql = scenario("demo.sqlserver.a", "sqlserver", "a",
                    [timing("pk_seek", [0.05, 0.06, 0.07], 0.01), Metric(name="lost", label="x", value=0)])
@@ -69,11 +74,19 @@ def test_report_is_self_contained_and_escapes_text(tmp_path: Path):
     red = scenario("demo.redis.a", "redis", "a", [timing("hgetall", [0.002, 0.003], 0.001)])
     save(results, run("r1", T0, [sql, red]))
 
-    out = builder.build(loader.load("r1", results), tmp_path / "reports" / "r1.html")
+    topic_dir = tmp_path / "t9_demo"
+    out = builder.build(one_report(results), topic_dir)
+    assert out.parent == topic_dir / "reports" and out.name.endswith("-local.html")
     html = out.read_text(encoding="utf-8")
+    assert (topic_dir / "reports" / "latest.html").read_text(encoding="utf-8") == html
+    # one topic per page: no cross-topic overview, but the topic's own sections
+    assert "Mục lục" not in html and 'aria-label="Tổng quan topic"' in html
+    for section in ("Câu hỏi nghiên cứu", "Môi trường và phương pháp đo", "Tổng hợp các cặp so sánh",
+                    "Danh sách scenario", "Các lần chạy được dùng trong report"):
+        assert section in html, section
     assert "<script>x</script>" not in html and "&lt;script&gt;x&lt;/script&gt;" in html
     assert "Clustered Index Seek &lt;PK_Story&gt;" in html                       # embedded text artifact, escaped
-    assert 'href="../results/r1/raw/demo.sqlserver.a.plan.sqlplan"' in html      # link relative to the report
+    assert 'href="../../results/r1/raw/demo.sqlserver.a.plan.sqlplan"' in html   # link relative to the report
     assert "<table>" in html and "Ghi chú" in html                                # NOTES.md rendered as markdown
     assert "ghi chú &lt;b&gt;" in html
     assert "Redis tốt hơn" in html and 'class="chart"' in html
@@ -99,7 +112,7 @@ def test_pair_has_sql_and_redis_tabs_with_statements(tmp_path: Path):
     old = scenario("demo.redis.b", "redis", "b", [], title="Không có câu lệnh")    # result from before the feature
     save(results, run("r1", T0, [sql, red, old]))
 
-    html = builder.render(loader.load("r1", results), tmp_path / "reports" / "r1.html")
+    html = builder.render(one_report(results), tmp_path / "reports" / "r1.html")
     assert 'role="tablist"' in html and 'id="pair-demo-a-tab-sqlserver"' in html
     import re
     assert re.search(r'id="pair-demo-a-code-sqlserver" aria-labelledby="[^"]+"\s*>', html)   # first tab shown
@@ -125,9 +138,24 @@ def test_latest_per_scenario_merges_runs(tmp_path: Path):
     save(results, run("r3", T0 + timedelta(hours=2), [scenario("demo.redis.a", "redis", "a", [], status="skipped")]))
     save(results, run("aws1", T0 + timedelta(hours=3), [new_sql], target="aws"))
 
-    merged = loader.load_latest_per_scenario(results, target="local")
-    [topic] = merged.result.topics
-    by_id = {s.id: s for s in topic.scenarios}
+    [merged] = loader.load_topic_reports(results, target="local")
+    by_id = {s.id: s for s in merged.topic.scenarios}
     assert by_id["demo.sqlserver.a"].metrics[0].value == 2.0                       # newest SQL Server result
     assert by_id["demo.redis.a"].status == "passed"                                # a later skip does not hide it
-    assert merged.sources == ["r1", "r2"]
+    assert merged.sources == ["r1", "r2"] and [r.scenarios for r in merged.runs] == [1, 1]
+
+    [only_r1] = loader.load_topic_reports(results, run_id="r1")                    # one run only
+    assert only_r1.sources == ["r1"]
+    assert loader.load_topic_reports(results, target="local", topics_filter={"other"}) == []
+
+
+def test_one_report_per_topic(tmp_path: Path):
+    results = tmp_path / "results"
+    a = run("r1", T0, [scenario("demo.sqlserver.a", "sqlserver", "a", [])])
+    b = run("r1", T0, [scenario("other.redis.a", "redis", "a", [])])
+    b.topics[0].topic.id, b.topics[0].topic.folder = "other", "t1_other"
+    a.topics += b.topics
+    save(results, a)
+    reports = loader.load_topic_reports(results, target="local")
+    assert [r.topic.topic.id for r in reports] == ["other", "demo"]                # ordered by folder number
+    assert all(len(r.result.topics) == 1 for r in reports)

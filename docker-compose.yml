@@ -42,6 +42,9 @@ services:
       LAB_AWS_REDIS_HOST: host.docker.internal
       LAB_AWS_REDIS_PORT: "16379"
       UV_PROJECT_ENVIRONMENT: /opt/venv   # keep the Linux venv out of the Windows working tree
+      LAB_SERVE_HOST: 0.0.0.0             # `lab serve` listens on all container interfaces...
+    ports:                                # ...published to this machine only (needs `run --service-ports`)
+      - "127.0.0.1:${LAB_SERVE_PORT:-8765}:${LAB_SERVE_PORT:-8765}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

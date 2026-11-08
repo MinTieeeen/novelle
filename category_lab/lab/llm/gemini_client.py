@@ -41,6 +41,9 @@ PING_MAX_TOKENS = 64
 SKIP_REASON = {QUOTA_EXHAUSTED: "hết quota", MODEL_UNAVAILABLE: "model không còn cho key này"}
 
 PROMPT_FILE = Path(__file__).parent / "prompts" / "commentary.md"
+SUGGEST_PROMPT_FILE = Path(__file__).parent / "prompts" / "suggest.md"
+SUGGEST_HEADER = "Yêu cầu viết nhận xét (JSON):\n"
+TOPIC_COMMENT_ID = "_topic"          # id of the topic-wide comment (the others are scenario ids)
 
 
 def system_prompt() -> str:
@@ -206,14 +209,15 @@ def _read_cache(path: Path) -> tuple[str, str, TopicCommentary] | None:
 
 
 def generate(topics: list[TopicResult], env: Environment, results_dir: Path, llm: GeminiConfig, *,
-             refresh: bool = False, client=None,
+             refresh: bool = False, cache_only: bool = False, client=None,
              progress: Callable[[str, str], None] | None = None,
              sleep: Callable[[float], None] = time.sleep) -> GenerateResult:
     """Commentary for every topic that has results; a failing topic is reported, not raised.
     Models are tried in order (llm.models). A model whose quota is used up (429) or that is not available
     (404) is skipped for the rest of the run, so the next topics go straight to a model that still works.
     The cache key uses the main model only, so an answer from a fallback model is reused next time.
-    When every model fails, the newest earlier answer for the topic is used and marked stale."""
+    When every model fails, the newest earlier answer for the topic is used and marked stale.
+    cache_only=True never calls the API (used when a report is rebuilt after saving comments)."""
     cache_dir = results_dir / ".llm-cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     result = GenerateResult()
@@ -231,7 +235,7 @@ def generate(topics: list[TopicResult], env: Environment, results_dir: Path, llm
             continue
 
         answer, used, error = None, None, None
-        for candidate in llm.models:                                  # main model, then the fallbacks
+        for candidate in (() if cache_only else llm.models):          # main model, then the fallbacks
             if candidate in skipped:
                 continue
             if progress:
@@ -260,7 +264,8 @@ def generate(topics: list[TopicResult], env: Environment, results_dir: Path, llm
             result.commentary[tid] = _to_commentary(topic, used, answer, generated_at, False)
             continue
 
-        result.errors[tid] = error or "unknown error"
+        if not cache_only:
+            result.errors[tid] = error or "unknown error"
         older = sorted(cache_dir.glob(f"{tid}-*.json"), key=lambda f: f.stat().st_mtime, reverse=True)
         for path in older:
             if hit := _read_cache(path):
@@ -271,6 +276,58 @@ def generate(topics: list[TopicResult], env: Environment, results_dir: Path, llm
                     progress(tid, "stale")
                 break
     return result
+
+
+# --- comment suggestions (lab serve) --------------------------------------------------------------------
+@dataclass
+class Suggestion:
+    text: str
+    model: str
+
+
+def _generate_text(client, llm: GeminiConfig, model: str, system: str, contents: str,
+                   sleep: Callable[[float], None]) -> str:
+    """Plain-text generation with the same retry rule as ask(): only overloaded (5xx) answers are retried."""
+    from google.genai import types
+    config = types.GenerateContentConfig(system_instruction=system, temperature=llm.temperature)
+    delays = llm.retry_delays_s
+    for attempt in range(len(delays) + 1):
+        try:
+            response = client.models.generate_content(model=model, contents=contents, config=config)
+            if not response.text:
+                raise RuntimeError("Gemini trả về rỗng (có thể bị chặn bởi bộ lọc an toàn)")
+            return response.text.strip()
+        except Exception as exc:
+            if _status_code(exc) not in OVERLOADED or attempt == len(delays):
+                raise
+            sleep(delays[attempt])
+    raise RuntimeError("unreachable")
+
+
+def suggest_comment(topic: TopicResult, env: Environment, results_dir: Path, llm: GeminiConfig, target_id: str,
+                    draft: str = "", *, client=None, sleep: Callable[[float], None] = time.sleep) -> Suggestion:
+    """A suggested comment for one scenario (target_id = scenario id) or for the whole topic
+    (target_id = TOPIC_COMMENT_ID), written from the topic's results; `draft` is improved when given.
+    Models are tried in order; a used-up or unavailable model is skipped at once."""
+    known = {s.id for s in topic.scenarios}
+    if target_id != TOPIC_COMMENT_ID and target_id not in known:
+        raise ValueError(f"unknown scenario '{target_id}'")
+    request = {"target": "topic" if target_id == TOPIC_COMMENT_ID else target_id,
+               "draft": _cut(draft, llm.max_statement_chars) if draft.strip() else "",
+               "data": build_payload(topic, env, results_dir, llm)}
+    contents = SUGGEST_HEADER + json.dumps(request, ensure_ascii=False, indent=1)
+    system = SUGGEST_PROMPT_FILE.read_text(encoding="utf-8")
+    client = client or make_client(llm)
+    errors = []
+    for model in llm.models:
+        try:
+            return Suggestion(_generate_text(client, llm, model, system, contents, sleep), model)
+        except Exception as exc:
+            code = _status_code(exc)
+            errors.append(f"{model}: {SKIP_REASON.get(code, f'{type(exc).__name__} {code or ''}'.strip())}")
+            if code not in SWITCH_NOW and code not in OVERLOADED:
+                break
+    raise RuntimeError("không tạo được gợi ý: " + "; ".join(errors))
 
 
 def check_key(llm: GeminiConfig, client=None) -> str:

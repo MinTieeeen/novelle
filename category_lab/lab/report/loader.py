@@ -1,23 +1,46 @@
-"""Finds and loads results/<runId>/run.json for the report.
+"""Loads results/<runId>/run.json files into one report per topic.
+
+A topic's report takes the NEWEST result of every scenario of that topic across the selected runs, so a
+member can re-run one DBMS (or one scenario) without losing the other results. A skipped scenario never
+hides an earlier real result. Only runs against one Redis target are combined, so local and aws numbers
+are never mixed; `run_id` restricts the report to that single run.
 
 Artifact paths inside a run.json are relative to that run's folder. The loader rewrites them to be
-relative to the results/ folder ("<runId>/raw/..."), so a report can combine scenarios from many runs.
+relative to the results/ folder ("<runId>/raw/..."), so one report can use artifacts of many runs.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
-from lab.framework.result import RunResult, TopicResult
+from lab.framework.result import RunResult, ScenarioResult, TopicResult
 from lab.framework.runner import RESULTS_DIR
 
 
 @dataclass
+class RunRef:
+    """A run that contributed to a topic report."""
+    run_id: str
+    started_at: datetime
+    target: str
+    scenarios: int                      # how many of the report's scenarios come from this run
+
+
+@dataclass
 class LoadedReport:
+    """Everything one topic report is built from. `result` holds exactly one topic."""
     result: RunResult
-    sources: list[str]            # run ids the report is built from
-    results_dir: Path
+    runs: list[RunRef] = field(default_factory=list)
+    results_dir: Path = RESULTS_DIR
+
+    @property
+    def topic(self) -> TopicResult:
+        return self.result.topics[0]
+
+    @property
+    def sources(self) -> list[str]:
+        return [r.run_id for r in self.runs]
 
 
 def list_runs(results_dir: Path = RESULTS_DIR) -> list[RunResult]:
@@ -39,57 +62,50 @@ def _rebase(run: RunResult) -> RunResult:
     return run
 
 
-def load(run_id: str = "latest", results_dir: Path = RESULTS_DIR) -> LoadedReport:
-    """One run: its id, or "latest"."""
-    if run_id == "latest":
-        runs = list_runs(results_dir)
+def load_topic_reports(results_dir: Path = RESULTS_DIR, *, run_id: str | None = None, target: str | None = None,
+                       topics_filter: set[str] | None = None) -> list[LoadedReport]:
+    """One LoadedReport per topic found in the selected runs (oldest topic folder first)."""
+    runs = list_runs(results_dir)
+    if run_id is not None:
+        runs = [r for r in runs if r.run_id == run_id]
         if not runs:
-            raise FileNotFoundError(f"no run.json under {results_dir}; run `lab run <topic>` first")
-        run = runs[-1]
-    else:
-        path = results_dir / run_id / "run.json"
-        if not path.is_file():
-            raise FileNotFoundError(f"{path} not found")
-        run = RunResult.model_validate_json(path.read_text(encoding="utf-8"))
-    return LoadedReport(_rebase(run), [run.run_id], results_dir)
-
-
-def load_latest_per_scenario(results_dir: Path = RESULTS_DIR, target: str | None = None,
-                             topics_filter: set[str] | None = None) -> LoadedReport:
-    """The newest result of every scenario across all runs, grouped by topic. This is how the team gets
-    one report when each member runs their own topic (or only one DBMS of it) separately.
-    `target` keeps only runs against that Redis target, so local and aws numbers are never mixed.
-    `topics_filter` keeps only these topic ids (the CLI passes the topics that still exist in topics/)."""
-    runs = [r for r in list_runs(results_dir) if target is None or r.environment.target == target]
+            raise FileNotFoundError(f"{results_dir / run_id / 'run.json'} not found")
+    elif target is not None:
+        runs = [r for r in runs if r.environment.target == target]
     if not runs:
         raise FileNotFoundError(f"no run.json under {results_dir}" + (f" for target {target}" if target else ""))
-    topics: dict[str, TopicResult] = {}
-    scenarios: dict[tuple[str, str], tuple[int, object]] = {}
-    sources: list[str] = []
-    order = 0
-    for run in map(_rebase, runs):                       # oldest first, newer results overwrite
-        used = False
-        for t in run.topics:
-            if topics_filter is not None and t.topic.id not in topics_filter:
-                continue
-            topics[t.topic.id] = TopicResult(topic=t.topic, scenarios=[])      # newest topic info wins
-            for s in t.scenarios:
-                if s.status == "skipped" and (t.topic.id, s.id) in scenarios:
-                    continue                             # a skip never hides an earlier real result
-                key = (t.topic.id, s.id)
-                first_seen = scenarios[key][0] if key in scenarios else (order := order + 1)
-                scenarios[key] = (first_seen, s)
-                used = True
-        if used:
-            sources.append(run.run_id)
-    for (topic_id, _), (_, s) in sorted(scenarios.items(), key=lambda kv: kv[1][0]):
-        topics[topic_id].scenarios.append(s)
 
-    latest = runs[-1]
-    merged = RunResult(run_id=f"combined-{datetime.now():%Y%m%d-%H%M%S}", started_at=runs[0].started_at,
-                       finished_at=datetime.now(timezone.utc), environment=latest.environment,
-                       topics=[topics[k] for k in sorted(topics, key=lambda k: _topic_order(topics[k]))])
-    return LoadedReport(merged, sources, results_dir)
+    infos: dict[str, TopicResult] = {}                                  # topic id -> newest topic info
+    chosen: dict[str, dict[str, tuple[ScenarioResult, RunResult]]] = {}  # topic -> scenario id -> (result, run)
+    order: dict[str, list[str]] = {}                                    # first-seen order of scenario ids
+    for run in map(_rebase, runs):                                      # oldest first: newer results win
+        for t in run.topics:
+            tid = t.topic.id
+            if topics_filter is not None and tid not in topics_filter:
+                continue
+            infos[tid] = t
+            picked = chosen.setdefault(tid, {})
+            for s in t.scenarios:
+                if s.status == "skipped" and s.id in picked:
+                    continue                                            # a skip never hides a real result
+                if s.id not in picked:
+                    order.setdefault(tid, []).append(s.id)
+                picked[s.id] = (s, run)
+
+    reports = []
+    for tid, picked in chosen.items():
+        scenarios = [picked[sid][0] for sid in order[tid]]
+        used: dict[str, RunRef] = {}
+        for _, run in picked.values():
+            ref = used.setdefault(run.run_id, RunRef(run.run_id, run.started_at, run.environment.target, 0))
+            ref.scenarios += 1
+        refs = sorted(used.values(), key=lambda r: r.started_at)
+        latest = max((run for _, run in picked.values()), key=lambda r: r.started_at)
+        result = RunResult(run_id=f"{tid}-{latest.run_id}", started_at=refs[0].started_at,
+                           finished_at=latest.finished_at, environment=latest.environment,
+                           topics=[TopicResult(topic=infos[tid].topic, scenarios=scenarios)])
+        reports.append(LoadedReport(result, refs, results_dir))
+    return sorted(reports, key=lambda r: _topic_order(r.topic))
 
 
 def _topic_order(t: TopicResult) -> tuple[int, str]:
