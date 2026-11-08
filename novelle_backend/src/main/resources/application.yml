@@ -27,6 +27,12 @@ spring:
       namespace: spring:session
     timeout: 7d
 
+  task:
+    scheduling:                      # used only when app.jobs.enabled (SchedulingConfig)
+      pool:
+        size: 2
+      thread-name-prefix: job-
+
   jackson:
     time-zone: UTC
     default-property-inclusion: non_null
@@ -67,3 +73,41 @@ management:
 app:
   cors:
     allowed-origins: ${APP_CORS_ORIGINS:http://localhost:5173}
+  # Fixed-window limits used by @RateLimited("<name>"); Redis key rl:<name>:<ip|userId>.
+  rate-limit:
+    enabled: ${RL_ENABLED:true}
+    limits:
+      login:
+        max-requests: ${RL_LOGIN_MAX:10}
+        window: ${RL_LOGIN_WINDOW:60s}
+      register:
+        max-requests: ${RL_REGISTER_MAX:5}
+        window: ${RL_REGISTER_WINDOW:1h}
+      search:
+        max-requests: ${RL_SEARCH_MAX:60}
+        window: ${RL_SEARCH_WINDOW:60s}
+      progress:
+        max-requests: ${RL_PROGRESS_MAX:120}
+        window: ${RL_PROGRESS_WINDOW:60s}
+  # Cache-aside entries in Redis (CacheService, keys in CacheKeys); SQL Server stays the source of truth.
+  cache:
+    ttl:
+      genre: ${CACHE_GENRE_TTL:1h}
+      home: ${CACHE_HOME_TTL:2m}
+      story: ${CACHE_STORY_TTL:10m}
+      chapter: ${CACHE_CHAPTER_TTL:30m}
+  # View counting (G6): Redis counters per Vietnam calendar day, flushed to SQL Server by sp_FlushViews.
+  views:
+    key-prefix: ${VIEWS_KEY_PREFIX:views:}
+    seen-ttl: ${VIEWS_SEEN_TTL:30m}
+    zone: ${VIEWS_ZONE:Asia/Ho_Chi_Minh}
+    flush-interval: ${VIEWS_FLUSH_INTERVAL:60s}
+    flush-batch: ${VIEWS_FLUSH_BATCH:1000}
+    flush-max-batches: ${VIEWS_FLUSH_MAX_BATCHES:20}
+  # @Scheduled jobs (view flush; scheduled publishing in M6). Off in tests.
+  jobs:
+    enabled: ${JOBS_ENABLED:true}
+  # Public catalog (F1): stories per home block, ratings needed to enter "top rated".
+  catalog:
+    home-size: ${CATALOG_HOME_SIZE:12}
+    top-rated-min-ratings: ${CATALOG_TOP_RATED_MIN_RATINGS:10}
