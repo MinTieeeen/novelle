@@ -1,0 +1,1 @@
+ALTER TABLE lab.transaction__Author DROP CONSTRAINT UQ_transaction__Author_PenName;
