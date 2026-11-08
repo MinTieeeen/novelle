@@ -105,3 +105,70 @@ def test_scaffold_creates_a_discoverable_topic(tmp_path: Path):
         maintenance.scaffold("t5_concurrency", owner="B", topics_dir=topics)
     with pytest.raises(ValueError):
         maintenance.scaffold("concurrency", owner="B", topics_dir=topics)
+
+
+class _FakeCursor:
+    """Behaves like a pyodbc cursor: its own __exit__ COMMITs when autocommit is off."""
+    def __init__(self, conn):
+        self.conn, self.description, self.rowcount, self.messages = conn, None, 1, []
+
+    def execute(self, sql, *params):
+        self.conn.log.append(sql)
+
+    def nextset(self):
+        return False
+
+    def close(self):
+        self.conn.log.append("close")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.conn.commit()
+
+
+class _FakeConn:
+    def __init__(self):
+        self.log = []
+
+    def cursor(self):
+        return _FakeCursor(self)
+
+    def commit(self):
+        self.log.append("COMMIT")
+
+    def rollback(self):
+        self.log.append("ROLLBACK")
+
+
+def test_sqlserver_helpers_do_not_commit_between_statements():
+    from lab.connections import SqlServer
+    sql = object.__new__(SqlServer)
+    sql.conn = _FakeConn()
+    sql.exec("UPDATE a")
+    sql.query("SELECT 1")
+    sql.messages("PRINT 1")
+    assert "COMMIT" not in sql.conn.log and sql.conn.log.count("close") == 3
+    sql.rollback()
+    sql.commit()
+    assert sql.conn.log[-2:] == ["ROLLBACK", "COMMIT"]
+
+
+def test_redis_timer_reads_slowlog_entries_with_binary_arguments():
+    from lab.framework.bench import RedisServerTimer
+
+    class Admin:
+        entries = []
+        def slowlog_get(self, n):
+            return self.entries[:1] if n == 1 else self.entries
+
+    timer = object.__new__(RedisServerTimer)
+    timer.admin, timer.name, timer.bench = Admin(), "lab-bench-x", None
+
+    def fn(_):
+        Admin.entries = [{"id": 1, "duration": 7, "client_name": b"lab-bench-x",
+                          "command": b"RESTORE lab:t:k 0 \x10\x81\xff REPLACE"}]
+
+    assert timer.run_once(fn) == 7.0
+    assert timer.last_commands[0].startswith("RESTORE lab:t:k 0 ") and r"\x81\xff" in timer.last_commands[0]

@@ -129,7 +129,8 @@ def bench_sql(db: SqlServer, sql: str, *params: Any, repeat: int = 20, warmup: i
 
 # --- Redis ------------------------------------------------------------------------------------------
 def _text(value: Any) -> str:
-    return value.decode() if isinstance(value, bytes) else str(value or "")
+    # SLOWLOG keeps the arguments as sent; binary ones (RESTORE <DUMP payload>) are not valid UTF-8.
+    return value.decode("utf-8", "backslashreplace") if isinstance(value, bytes) else str(value or "")
 
 
 class RedisServerTimer:
