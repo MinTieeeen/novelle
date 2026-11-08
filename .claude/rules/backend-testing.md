@@ -30,6 +30,9 @@ Location `src/test/java/com/novelle/integration`, class name `*IntegrationTest`,
 - Fixtures: create through the API (`registerReader(client)`) or change rows with `sql(...)`. Never call `jdbc.update` directly: the test shares one MyBatis SqlSession and `sql(...)` clears its local cache, otherwise later requests read stale rows.
 - Seeded users: find them by query (`seededActiveAuthor()`, `seededBannedUser()`), never by hard-coded id; give them a known password inside the transaction with `withKnownPassword(username)`. Never use or print the demo password.
 - Nothing may commit outside the test transaction: no `REQUIRES_NEW`, no separate connections, no seed/reset scripts.
+- Every `@SpringBootTest` uses `properties = {TestProperties.JOBS_OFF, TestProperties.VIEWS_PREFIX}`: no `@Scheduled` job (the view flush would commit real counters), view keys under `it:views:` (a running dev app never flushes them). Call job logic directly (`ViewFlusher.flush()`): stored procedures called inside the test transaction only nest their BEGIN/COMMIT, so the rollback still removes everything.
+- Redis keys removed after each test: `rl:*:<ip>` of the clients, `rl:*:u<userId>` of users made by `registerReader`, sessions, `cache:*`, `it:views:*`.
+- A trigger may block a fixture: `trg_Chapter_Revision` throws 50005 when `Chapter.Title`/`Content` change without `SESSION_CONTEXT user_id`; change other columns (`WordCount`) in tests that only need "some data changed".
 - Rate-limit tests send invalid bodies: `@RateLimited` runs before validation, so no row is written.
 - Redis side effects are asserted directly (`redis.hasKey(sessionKey(id))`, `redis.getExpire("rl:login:" + ip)`).
 

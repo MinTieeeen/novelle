@@ -42,12 +42,16 @@ Package `com.novelle`, **by layer**; layer packages are flat, class names carry 
 | `exception` | `ErrorCode`, `ApiError`, `ApiException`, `ApiErrorWriter`, `GlobalExceptionHandler` |
 | `config` | `SecurityConfig`, `WebMvcConfig`, CORS, OpenAPI |
 | `infrastructure.security` | `SessionUser`, `CurrentUser`, `SessionAuthenticator`, `UserStatusFilter`, JSON 401/403 handlers |
-| `infrastructure.mybatis` | `RowVersion` + type handler (TVP for `sp_FlushViews` later) |
+| `infrastructure.mybatis` | `RowVersion` + type handler; `ViewDeltaBatchTypeHandler` (TVP `dbo.ViewDeltaTable` of `sp_FlushViews`, registered for the wrapper record `ViewDeltaBatch`, never for `List`) |
+| `infrastructure.views` | `ViewKeys` (only place that names `views:*` keys), `ViewCounterStore` (Lua in `resources/redis/`), `ViewCounterService`, `ViewFlusher` + `ViewFlushJob` |
 | `infrastructure.ratelimit` | `@RateLimited`, interceptor, Redis fixed window |
-| `infrastructure.cache` / `views` / `jobs` / `html` | cache-aside, view counters + flush job, `sp_PublishScheduled` job, chapter HTML sanitizer (not built yet) |
+| `infrastructure.cache` | `CacheService` (cache-aside, fail open), `CacheKeys`, `CacheTtlProperties` |
+| `infrastructure.jobs` / `html` | `sp_PublishScheduled` job, chapter HTML sanitizer (not built yet, M6) |
+
+Jobs: `@Scheduled` runs only when `app.jobs.enabled` (`JOBS_ENABLED`, `config/SchedulingConfig`). Every `@SpringBootTest` must use `TestProperties.JOBS_OFF` and `TestProperties.VIEWS_PREFIX` (test views under `it:views:`), otherwise the flush job commits real rows to the shared RDS.
 
 Request flow: Spring Session (Redis) → CORS → `UserStatusFilter` → CSRF → logout → URL rules → `RateLimitInterceptor` → controller → service (`@Transactional`) → mapper → SQL Server; errors → `ApiError { status, code, message, details }`.
 
 Access: `/api/studio/**` AUTHOR, `/api/admin/**` ADMIN, listed public GETs, every other request needs login.
 
-Roadmap of all modules (order, APIs, files, risks): `../../docs/backend-roadmap.md`. Done so far: module users (`/api/auth/**`, `/api/me/**`, `/api/users/{username}`), spec in `../../docs/module-users.md`.
+Roadmap of all modules (order, APIs, files, risks): `../../docs/backend-roadmap.md`. Done so far: module users (`/api/auth/**`, `/api/me/**`, `/api/users/{username}`, spec `../../docs/module-users.md`); catalog + story (`/api/genres`, `/api/tags`, `/api/home`, `/api/stories/**`, `/api/authors/**`, spec `../../docs/module-catalog.md`); reading (`/api/chapters/{id}`, `/api/reading-progress/{storyId}`, view counting + flush job, spec `../../docs/module-reading.md`).
