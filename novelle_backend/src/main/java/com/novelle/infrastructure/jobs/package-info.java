@@ -1,2 +1,2 @@
-/** Scheduled tasks that replace SQL Server Agent (sp_PublishScheduled). */
+/** Scheduled tasks that replace SQL Server Agent: ScheduledPublisher / ScheduledPublishJob (sp_PublishScheduled). */
 package com.novelle.infrastructure.jobs;

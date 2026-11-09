@@ -53,6 +53,9 @@ public interface StudioChapterMapper {
     /** sp_PublishScheduled (RB11, READPAST); returns how many chapters were published. */
     Integer publishScheduled();
 
+    /** SYSUTCDATETIME() of SQL Server as DATETIME2(3): the clock sp_PublishScheduled stamps PublishedAt with. */
+    LocalDateTime dbNow();
+
     /** Stories with a chapter published at or after {@code since} (cache eviction after the job). */
     List<Integer> storiesPublishedSince(@Param("since") LocalDateTime since);
 }

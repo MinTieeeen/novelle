@@ -91,6 +91,11 @@
         {call dbo.sp_PublishScheduled()}
     </select>
 
+    <!-- database clock, rounded like a DATETIME2(3) column; the job compares it with PublishedAt set by the procedure -->
+    <select id="dbNow" resultType="java.time.LocalDateTime" flushCache="true">
+        SELECT CAST(SYSUTCDATETIME() AS DATETIME2(3))
+    </select>
+
     <select id="storiesPublishedSince" resultType="int" flushCache="true">
         SELECT DISTINCT StoryId
         FROM dbo.Chapter
