@@ -156,6 +156,14 @@ abstract class ApiIntegrationTest {
         return username;
     }
 
+    /** A new client logged in as an existing (seeded) user, whose password is set to {@link #PASSWORD} first. */
+    protected Client loginAs(String username) throws Exception {
+        withKnownPassword(username);
+        Client client = newClient().csrf();
+        client.post("/api/auth/login", Map.of("login", username, "password", PASSWORD)).andExpect(status().isOk());
+        return client;
+    }
+
     protected int userId(String username) {
         return jdbc.queryForObject("SELECT UserId FROM dbo.[User] WHERE Username = ?", Integer.class, username);
     }
@@ -235,6 +243,14 @@ abstract class ApiIntegrationTest {
 
         ResultActions putWithoutCsrf(String url, Object body) throws Exception {
             return send(withBody(MockMvcRequestBuilders.put(url), body), false);
+        }
+
+        ResultActions delete(String url) throws Exception {
+            return send(MockMvcRequestBuilders.delete(url), true);
+        }
+
+        ResultActions deleteWithoutCsrf(String url) throws Exception {
+            return send(MockMvcRequestBuilders.delete(url), false);
         }
 
         /** Any request built by the test (extra headers, query params) with this client's cookies, IP and CSRF header. */

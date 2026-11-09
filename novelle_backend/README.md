@@ -160,6 +160,11 @@ All settings of the project live in ONE file, `novelle/.env` (template: `novelle
 | `VIEWS_FLUSH_INTERVAL`, `VIEWS_FLUSH_BATCH`, `VIEWS_FLUSH_MAX_BATCHES` | `60s`, `1000`, `20` | `ViewFlushJob` |
 | `JOBS_ENABLED` | `true` | `false` turns off every `@Scheduled` job (view flush): only for tests and local checks, counters then stay in Redis |
 | `RL_PROGRESS_MAX`, `RL_PROGRESS_WINDOW` | `120`, `60s` | Rate limit of `PUT /api/reading-progress/{storyId}` per user |
+| `RL_RATING_MAX`, `RL_RATING_WINDOW` | `10`, `60s` | Rate limit of `PUT` / `DELETE /api/stories/{id}/ratings/me` per user |
+| `RL_FOLLOW_MAX`, `RL_FOLLOW_WINDOW` | `60`, `60s` | Rate limit of follow / unfollow (stories and authors) per user |
+| `RL_AUTHOR_REQUEST_MAX`, `RL_AUTHOR_REQUEST_WINDOW` | `3`, `1d` | Rate limit of `POST /api/author-requests` per user |
+| `READING_LIST_MAX_LISTS`, `READING_LIST_MAX_ITEMS` | `50`, `500` | Reading lists per user, stories per list |
+| `APP_DEMO_REDIS_LOCK`, `AUTHOR_REQUEST_LOCK_TTL` | `false`, `5s` | Optional Redis lock `lock:author-request:{id}` before approving / rejecting (concurrency demo only) |
 
 ### 4.3 Spring profiles
 
@@ -308,16 +313,27 @@ Spec: [`../../docs/module-reading.md`](../../docs/module-reading.md). `GET /api/
 
 ### 5.6 Becoming an author (F7, F11)
 
-1. A `READER` with `ACTIVE` status submits a request (pen name, bio). A filtered unique index allows at most one `PENDING` request per user (RB14).
-2. An admin lists `PENDING` requests and approves or rejects one. `AuthorRequestReviewService` calls `sp_ApproveAuthorRequest`, which:
-   - locks the request row with `UPDLOCK` and checks that it is still `PENDING`;
-   - sets it to `APPROVED`, changes the user's role to `AUTHOR` and creates the `AuthorProfile`, all in one transaction (RB15).
-3. If two admins act on the same request at the same time, the second one finds a non-`PENDING` status. The procedure raises an error, which the service maps to **409 Conflict**. The Redis lock `lock:author-request:{id}` (`SET NX PX`) exists only to compare this approach with SQL Server locking in the DBMS demo.
-4. The reader sees the result on the F7 page. Their next request already has the `AUTHOR` role because of `UserStatusFilter`.
+Spec: [`../../docs/module-author-request.md`](../../docs/module-author-request.md).
 
-### 5.7 Ratings (F6)
+1. An `ACTIVE` `READER` submits a request (`POST /api/author-requests`: proposed pen name, introduction). `AuthorRequestService` re-reads the role from the database, rejects a second `PENDING` request (the filtered unique index `UX_AuthorRequest_Pending` stops a concurrent one, RB14) and a pen name already used by an author. The reader can list (`GET /me`) and cancel (`POST /{id}/cancel`) their requests.
+2. An admin lists the queue (`GET /api/admin/author-requests?status=`, `PENDING` oldest first, with a "previously rejected" flag) and approves or rejects one. `AuthorRequestReviewService` is deliberately **not** `@Transactional`: it pre-checks the status (404 / 409 early) and calls `sp_ApproveAuthorRequest` / `sp_RejectAuthorRequest`, which open their own transaction and:
+   - lock the request row `WITH (UPDLOCK, HOLDLOCK)` and check that it is still `PENDING`;
+   - set it to `APPROVED`, change the user's role to `AUTHOR` and create the `Author` row, all in one transaction (RB15).
+3. If two admins act on the same request at the same time, the second one waits on the lock, then finds a non-`PENDING` status: error 50001 → **409 `ALREADY_PROCESSED`**. With `APP_DEMO_REDIS_LOCK=true` the service first takes `lock:author-request:{id}` (`SET NX PX`, released by a compare-and-delete Lua script); a busy lock answers 409 `REVIEW_IN_PROGRESS`. It exists only to compare with SQL Server locking; `database/queries/40_demo_approve_race.sql` shows the two-session race by hand.
+4. The applicant's next request already has the `AUTHOR` role because of `UserStatusFilter`.
 
-`PUT /api/stories/{storyId}/ratings/me` inserts or updates the user's rating with a `MERGE` in `RatingMapper`. Authors cannot rate their own stories and admins cannot rate at all (RB4, RB16). The `trg_Rating` trigger recalculates `Story.RatingAvg` and `RatingCount` in the same transaction, then the service evicts `cache:story:{id}`. The endpoint is limited by `rl:rating:{userId}`.
+### 5.7 Library and ratings (F5, F6)
+
+Spec: [`../../docs/module-library.md`](../../docs/module-library.md).
+
+**Ratings.** `PUT /api/stories/{storyId}/ratings/me` inserts or updates the user's rating with `MERGE dbo.Rating WITH (HOLDLOCK)` in `RatingMapper`. Authors cannot rate their own stories and admins cannot rate at all (RB4, RB16). The `trg_Rating` trigger recalculates `Story.RatingAvg` and `RatingCount` in the same transaction (every rating of one story updates that story row: a hot row), the service reads the new values back and evicts `cache:story:{id}`. `GET /api/stories/{storyId}/ratings` returns the 1–5 distribution (`GROUP BY Score`) and a page of ratings; `GET …/ratings/me` answers 204 when the user has not rated. Writes are limited by `rl:rating:u{userId}`.
+
+**Library.**
+
+- **Follow** stories and authors: `PUT` / `DELETE` are idempotent (`INSERT … WHERE NOT EXISTS … WITH (UPDLOCK, HOLDLOCK)`); `trg_Follow` / `trg_AuthorFollow` keep `Story.FollowCount` / `Author.FollowerCount`. Only public stories can be followed; unfollowing works for hidden ones.
+- **Reading lists**: every write first locks the list row (`WITH (UPDLOCK)`, ownership check in the same statement), so `OrderNo = MAX + 1` and `ItemCount` (kept by the service) stay correct under concurrent writes. Reorder is one `UPDATE … FROM … JOIN (VALUES …)`. Private lists of other users answer 404; public ones are readable by anyone and listed on `GET /api/users/{username}/reading-lists`.
+- **History**: `GET /api/library/history` lists the positions written by F4, public stories only.
+- The personal GETs under public paths (`/api/stories/*/follow`, `/api/stories/*/ratings/me`, `/api/authors/*/follow`) are listed as `authenticated()` in `SecurityConfig` before the public `/api/stories/**` rule.
 
 ### 5.8 Administration (F11–F13)
 
