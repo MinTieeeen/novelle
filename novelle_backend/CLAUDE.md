@@ -45,7 +45,7 @@ Package `com.novelle`, **by layer**; layer packages are flat, class names carry 
 | `infrastructure.mybatis` | `RowVersion` + type handler; `ViewDeltaBatchTypeHandler` (TVP `dbo.ViewDeltaTable` of `sp_FlushViews`, registered for the wrapper record `ViewDeltaBatch`, never for `List`) |
 | `infrastructure.views` | `ViewKeys` (only place that names `views:*` keys), `ViewCounterStore` (Lua in `resources/redis/`), `ViewCounterService`, `ViewFlusher` + `ViewFlushJob` |
 | `infrastructure.ratelimit` | `@RateLimited`, interceptor, Redis fixed window |
-| `infrastructure.cache` | `CacheService` (cache-aside, fail open), `CacheKeys`, `CacheTtlProperties` |
+| `infrastructure.cache` | `CacheService` (cache-aside, fail open), `CacheKeys`, `CacheTtlProperties`; `RedisLockService` + `LockKeys` (`lock:*`, `SET NX PX`, Lua release; only for the optional author-request review lock `APP_DEMO_REDIS_LOCK`) |
 | `infrastructure.jobs` / `html` | `sp_PublishScheduled` job, chapter HTML sanitizer (not built yet, M6) |
 
 Jobs: `@Scheduled` runs only when `app.jobs.enabled` (`JOBS_ENABLED`, `config/SchedulingConfig`). Every `@SpringBootTest` must use `TestProperties.JOBS_OFF` and `TestProperties.VIEWS_PREFIX` (test views under `it:views:`), otherwise the flush job commits real rows to the shared RDS.
@@ -54,4 +54,6 @@ Request flow: Spring Session (Redis) → CORS → `UserStatusFilter` → CSRF �
 
 Access: `/api/studio/**` AUTHOR, `/api/admin/**` ADMIN, listed public GETs, every other request needs login.
 
-Roadmap of all modules (order, APIs, files, risks): `../../docs/backend-roadmap.md`. Done so far: module users (`/api/auth/**`, `/api/me/**`, `/api/users/{username}`, spec `../../docs/module-users.md`); catalog + story (`/api/genres`, `/api/tags`, `/api/home`, `/api/stories/**`, `/api/authors/**`, spec `../../docs/module-catalog.md`); reading (`/api/chapters/{id}`, `/api/reading-progress/{storyId}`, view counting + flush job, spec `../../docs/module-reading.md`).
+Roadmap of all modules (order, APIs, files, risks): `../../docs/backend-roadmap.md`. Done so far: module users (`/api/auth/**`, `/api/me/**`, `/api/users/{username}`, spec `../../docs/module-users.md`); catalog + story (`/api/genres`, `/api/tags`, `/api/home`, `/api/stories/**`, `/api/authors/**`, spec `../../docs/module-catalog.md`); reading (`/api/chapters/{id}`, `/api/reading-progress/{storyId}`, view counting + flush job, spec `../../docs/module-reading.md`); library + rating (`/api/library/**`, `/api/reading-lists/**`, `/api/users/{username}/reading-lists`, `/api/stories/{id}/follow|ratings`, `/api/authors/{id}/follow`, spec `../../docs/module-library.md`); author request (`/api/author-requests/**`, `/api/admin/author-requests/**`, spec `../../docs/module-author-request.md`).
+
+Pitfalls met in M4/M5: approve / reject are not `@Transactional` because the procedures own their transaction; tables with triggers (`Rating`, `Follow`, `AuthorFollow`) cannot use `OUTPUT` without `INTO`; a `<select>` that must take a lock (`ReadingListMapper.lockOwned`) needs `flushCache="true" useCache="false"`; integration tests that send many requests as one user hit that user's rate limit (`author-request` is 3 per day).

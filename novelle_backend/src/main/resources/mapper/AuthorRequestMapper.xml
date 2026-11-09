@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.AuthorRequestMapper">
+
+    <sql id="ownColumns">
+        SELECT r.RequestId, r.UserId, r.ProposedPenName, r.Introduction, r.Status, r.ReviewNote,
+               r.CreatedAt, r.ReviewedAt
+        FROM dbo.AuthorRequest r
+    </sql>
+
+    <!-- ===================== applicant ===================== -->
+
+    <!-- Status, ReviewedBy, CreatedAt come from the column defaults (PENDING, NULL, SYSUTCDATETIME()) -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="requestId" keyColumn="RequestId">
+        INSERT dbo.AuthorRequest (UserId, ProposedPenName, Introduction)
+        VALUES (#{userId}, #{proposedPenName}, #{introduction})
+    </insert>
+
+    <!-- 1 condition -->
+    <select id="findMine" resultType="com.novelle.model.AuthorRequest">
+        <include refid="ownColumns"/>
+        WHERE r.UserId = #{userId}
+        ORDER BY r.CreatedAt DESC, r.RequestId DESC
+    </select>
+
+    <select id="findOwned" resultType="com.novelle.model.AuthorRequest">
+        <include refid="ownColumns"/>
+        WHERE r.RequestId = #{requestId} AND r.UserId = #{userId}
+    </select>
+
+    <!-- seeks UX_AuthorRequest_Pending (filtered unique index on UserId WHERE Status = 'PENDING') -->
+    <select id="hasPending" resultType="boolean">
+        SELECT CASE WHEN EXISTS (
+            SELECT 1 FROM dbo.AuthorRequest WHERE UserId = #{userId} AND Status = 'PENDING'
+        ) THEN 1 ELSE 0 END
+    </select>
+
+    <!-- column collation (case and tone insensitive), the same comparison as UQ_Author_PenName -->
+    <select id="penNameTaken" resultType="boolean">
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.Author WHERE PenName = #{penName}) THEN 1 ELSE 0 END
+    </select>
+
+    <!-- many conditions: owner AND still pending; the WHERE makes the state change atomic -->
+    <update id="cancel">
+        UPDATE dbo.AuthorRequest
+        SET Status = 'CANCELLED'
+        WHERE RequestId = #{requestId} AND UserId = #{userId} AND Status = 'PENDING'
+    </update>
+
+    <!-- ===================== admin ===================== -->
+
+    <select id="findStatus" resultType="string">
+        SELECT Status FROM dbo.AuthorRequest WHERE RequestId = #{requestId}
+    </select>
+
+    <resultMap id="AdminRowMap" type="com.novelle.model.AuthorRequestAdminRow" autoMapping="true">
+        <id property="requestId" column="RequestId"/>
+        <association property="applicant" javaType="com.novelle.model.UserRef"
+                     columnPrefix="Applicant_" autoMapping="true"/>
+    </resultMap>
+
+    <sql id="adminFilter">
+        <where>
+            <if test="status != null">r.Status = #{status}</if>
+        </where>
+    </sql>
+
+    <!--
+      join AuthorRequest ⋈ [User] + correlated subquery: was this applicant rejected on another request?
+      The queue of PENDING requests is oldest first (D5, IX_AuthorRequest_Status (Status, CreatedAt));
+      decided requests (and "all") show the latest decision first.
+    -->
+    <select id="adminPage" resultMap="AdminRowMap">
+        SELECT r.RequestId, r.ProposedPenName, r.Status, r.CreatedAt, r.ReviewedAt,
+               u.UserId    AS Applicant_UserId,
+               u.Username  AS Applicant_Username,
+               u.AvatarUrl AS Applicant_AvatarUrl,
+               CASE WHEN EXISTS (
+                   SELECT 1 FROM dbo.AuthorRequest r2
+                   WHERE r2.UserId = r.UserId AND r2.Status = 'REJECTED' AND r2.RequestId &lt;&gt; r.RequestId
+               ) THEN 1 ELSE 0 END AS PreviouslyRejected
+        FROM dbo.AuthorRequest r
+        JOIN dbo.[User] u ON u.UserId = r.UserId
+        <include refid="adminFilter"/>
+        <choose>
+            <when test='status == "PENDING"'>ORDER BY r.CreatedAt ASC, r.RequestId ASC</when>
+            <otherwise>ORDER BY COALESCE(r.ReviewedAt, r.CreatedAt) DESC, r.RequestId DESC</otherwise>
+        </choose>
+        OFFSET #{offset} ROWS FETCH NEXT #{size} ROWS ONLY
+    </select>
+
+    <!-- aggregate -->
+    <select id="adminCount" resultType="long">
+        SELECT COUNT(*) FROM dbo.AuthorRequest r
+        <include refid="adminFilter"/>
+    </select>
+
+    <resultMap id="DetailMap" type="com.novelle.model.AuthorRequestDetail" autoMapping="true">
+        <id property="requestId" column="RequestId"/>
+        <association property="applicant" javaType="com.novelle.model.AuthorRequestDetail$Applicant"
+                     columnPrefix="Applicant_" autoMapping="true"/>
+        <association property="reviewer" javaType="com.novelle.model.UserRef"
+                     columnPrefix="Reviewer_" notNullColumn="UserId" autoMapping="true"/>
+    </resultMap>
+
+    <!-- join: applicant (inner) and reviewer (outer, NULL while pending or cancelled) -->
+    <select id="adminDetail" resultMap="DetailMap">
+        SELECT r.RequestId, r.ProposedPenName, r.Introduction, r.Status, r.ReviewNote, r.CreatedAt, r.ReviewedAt,
+               u.UserId    AS Applicant_UserId,
+               u.Username  AS Applicant_Username,
+               u.Email     AS Applicant_Email,
+               u.AvatarUrl AS Applicant_AvatarUrl,
+               u.Role      AS Applicant_Role,
+               u.Status    AS Applicant_Status,
+               u.CreatedAt AS Applicant_JoinedAt,
+               rv.UserId   AS Reviewer_UserId,
+               rv.Username AS Reviewer_Username
+        FROM dbo.AuthorRequest r
+        JOIN dbo.[User] u ON u.UserId = r.UserId
+        LEFT JOIN dbo.[User] rv ON rv.UserId = r.ReviewedBy
+        WHERE r.RequestId = #{requestId}
+    </select>
+
+    <!-- aggregate with GROUP BY over the applicant's other requests (subquery picks the applicant) -->
+    <select id="countOtherByStatus" resultType="com.novelle.model.StatusCount">
+        SELECT o.Status, COUNT(*) AS Total
+        FROM dbo.AuthorRequest o
+        WHERE o.UserId = (SELECT r.UserId FROM dbo.AuthorRequest r WHERE r.RequestId = #{requestId})
+          AND o.RequestId &lt;&gt; #{requestId}
+        GROUP BY o.Status
+    </select>
+
+    <!--
+      The procedures open and commit their own transaction (RB15) and lock the request row
+      WITH (UPDLOCK, HOLDLOCK). <update> because they return no rows.
+    -->
+    <update id="approve" statementType="CALLABLE">
+        {call dbo.sp_ApproveAuthorRequest(#{requestId, jdbcType=INTEGER}, #{adminId, jdbcType=INTEGER})}
+    </update>
+
+    <update id="reject" statementType="CALLABLE">
+        {call dbo.sp_RejectAuthorRequest(#{requestId, jdbcType=INTEGER}, #{adminId, jdbcType=INTEGER},
+                                         #{note, jdbcType=NVARCHAR})}
+    </update>
+</mapper>

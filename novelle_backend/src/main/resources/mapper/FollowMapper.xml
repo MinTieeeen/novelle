@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.FollowMapper">
+
+    <!-- ===================== stories ===================== -->
+
+    <!--
+      Insert-if-absent in one statement (subquery NOT EXISTS). UPDLOCK + HOLDLOCK keep the key range locked from
+      the check to the insert, so two concurrent PUTs cannot both insert (PK violation); the service still treats a
+      DuplicateKeyException as "already following". No OUTPUT clause: Follow has a trigger (trg_Follow), and
+      OUTPUT without INTO is not allowed on such tables (docs/module-library.md D8).
+    -->
+    <insert id="followStory">
+        INSERT dbo.Follow (UserId, StoryId)
+        SELECT #{userId}, #{storyId}
+        WHERE NOT EXISTS (SELECT 1 FROM dbo.Follow WITH (UPDLOCK, HOLDLOCK)
+                          WHERE UserId = #{userId} AND StoryId = #{storyId})
+    </insert>
+
+    <delete id="unfollowStory">
+        DELETE dbo.Follow WHERE UserId = #{userId} AND StoryId = #{storyId}
+    </delete>
+
+    <select id="isFollowingStory" resultType="boolean">
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.Follow WHERE UserId = #{userId} AND StoryId = #{storyId})
+                    THEN 1 ELSE 0 END
+    </select>
+
+    <!-- read after the write in the same transaction: the trigger has already updated the counter -->
+    <select id="storyFollowCount" resultType="java.lang.Integer" flushCache="true" useCache="false">
+        SELECT FollowCount FROM dbo.Story WHERE StoryId = #{storyId}
+    </select>
+
+    <!-- join Follow ⋈ vw_PublicStory (D3); the PK (UserId, StoryId) is the seek. DESC puts NULL LastChapterAt last -->
+    <select id="pageFollowedStories" resultMap="com.novelle.mapper.StorySearchMapper.StoryCardMap">
+        SELECT <include refid="com.novelle.mapper.StorySearchMapper.cardColumns"/>
+        <include refid="com.novelle.mapper.StorySearchMapper.cardFrom"/>
+        JOIN dbo.Follow f ON f.StoryId = s.StoryId AND f.UserId = #{userId}
+        ORDER BY s.LastChapterAt DESC, s.StoryId DESC
+        OFFSET #{offset} ROWS FETCH NEXT #{size} ROWS ONLY
+    </select>
+
+    <select id="countFollowedStories" resultType="long">
+        SELECT COUNT(*)
+        FROM dbo.Follow f
+        JOIN dbo.vw_PublicStory s ON s.StoryId = f.StoryId
+        WHERE f.UserId = #{userId}
+    </select>
+
+    <!-- ===================== authors ===================== -->
+
+    <!-- same pattern as followStory; CK_AuthorFollow_NotSelf backs the service's RB4 check -->
+    <insert id="followAuthor">
+        INSERT dbo.AuthorFollow (FollowerId, AuthorId)
+        SELECT #{followerId}, #{authorId}
+        WHERE NOT EXISTS (SELECT 1 FROM dbo.AuthorFollow WITH (UPDLOCK, HOLDLOCK)
+                          WHERE FollowerId = #{followerId} AND AuthorId = #{authorId})
+    </insert>
+
+    <delete id="unfollowAuthor">
+        DELETE dbo.AuthorFollow WHERE FollowerId = #{followerId} AND AuthorId = #{authorId}
+    </delete>
+
+    <select id="isFollowingAuthor" resultType="boolean">
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.AuthorFollow
+                                 WHERE FollowerId = #{followerId} AND AuthorId = #{authorId})
+                    THEN 1 ELSE 0 END
+    </select>
+
+    <select id="authorFollowerCount" resultType="java.lang.Integer" flushCache="true" useCache="false">
+        SELECT FollowerCount FROM dbo.Author WHERE UserId = #{authorId}
+    </select>
+
+    <!-- join AuthorFollow ⋈ Author ⋈ [User] (avatar) -->
+    <select id="pageFollowedAuthors" resultType="com.novelle.model.FollowedAuthor">
+        SELECT a.UserId AS AuthorId, a.PenName, u.AvatarUrl, a.IsVerified, a.FollowerCount,
+               af.CreatedAt AS FollowedAt
+        FROM dbo.AuthorFollow af
+        JOIN dbo.Author a ON a.UserId = af.AuthorId
+        JOIN dbo.[User] u ON u.UserId = a.UserId
+        WHERE af.FollowerId = #{followerId}
+        ORDER BY af.CreatedAt DESC, a.UserId DESC
+        OFFSET #{offset} ROWS FETCH NEXT #{size} ROWS ONLY
+    </select>
+
+    <select id="countFollowedAuthors" resultType="long">
+        SELECT COUNT(*) FROM dbo.AuthorFollow WHERE FollowerId = #{followerId}
+    </select>
+</mapper>

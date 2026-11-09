@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.novelle.TestProperties;
 import com.novelle.infrastructure.cache.CacheKeys;
+import com.novelle.infrastructure.cache.LockKeys;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -94,9 +95,13 @@ abstract class ApiIntegrationTest {
         deleteCacheEntries();
     }
 
-    /** Removes {@code cache:*} and the test view keys ({@code it:views:*}, see TestProperties). */
+    /**
+     * Removes {@code cache:*}, the test view keys ({@code it:views:*}, see TestProperties) and {@code lock:*}
+     * (review locks live 5 s; a test that fails while holding one must not give the next test REVIEW_IN_PROGRESS).
+     */
     protected void deleteCacheEntries() {
-        for (String pattern : List.of(CacheKeys.PREFIX + "*", TestProperties.VIEWS_PREFIX_VALUE + "*")) {
+        for (String pattern : List.of(CacheKeys.PREFIX + "*", TestProperties.VIEWS_PREFIX_VALUE + "*",
+                LockKeys.PREFIX + "*")) {
             Set<String> keys = redis.keys(pattern);
             if (keys != null && !keys.isEmpty()) {
                 redis.delete(keys);
@@ -138,19 +143,41 @@ abstract class ApiIntegrationTest {
         return rows;
     }
 
-    /** Sets the password of an existing (seeded) user to {@link #PASSWORD}. */
+    /**
+     * Sets the password of an existing (seeded) user to {@link #PASSWORD}. Its per-user rate-limit keys
+     * ({@code rl:*:u<userId>}) are removed after the test, like those of registered users.
+     */
     protected String withKnownPassword(String username) {
         if (fixtureHash == null) {
             fixtureHash = passwordEncoder.encode(PASSWORD);
         }
         sql("UPDATE dbo.[User] SET PasswordHash = ? WHERE Username = ?", fixtureHash, username);
+        registeredUserIds.add(userId(username));
         return username;
+    }
+
+    /** A new client logged in as an existing (seeded) user, whose password is set to {@link #PASSWORD} first. */
+    protected Client loginAs(String username) throws Exception {
+        withKnownPassword(username);
+        Client client = newClient().csrf();
+        client.post("/api/auth/login", Map.of("login", username, "password", PASSWORD)).andExpect(status().isOk());
+        return client;
+    }
+
+    protected int userId(String username) {
+        return jdbc.queryForObject("SELECT UserId FROM dbo.[User] WHERE Username = ?", Integer.class, username);
     }
 
     protected String seededActiveAuthor() {
         return jdbc.queryForObject("""
                 SELECT TOP (1) u.Username FROM dbo.[User] u JOIN dbo.Author a ON a.UserId = u.UserId
                 WHERE u.Status = 'ACTIVE' ORDER BY u.UserId""", String.class);
+    }
+
+    protected String seededActiveAdmin() {
+        return jdbc.queryForObject("""
+                SELECT TOP (1) Username FROM dbo.[User]
+                WHERE Role = 'ADMIN' AND Status = 'ACTIVE' ORDER BY UserId""", String.class);
     }
 
     protected String seededBannedUser() {
@@ -216,6 +243,14 @@ abstract class ApiIntegrationTest {
 
         ResultActions putWithoutCsrf(String url, Object body) throws Exception {
             return send(withBody(MockMvcRequestBuilders.put(url), body), false);
+        }
+
+        ResultActions delete(String url) throws Exception {
+            return send(MockMvcRequestBuilders.delete(url), true);
+        }
+
+        ResultActions deleteWithoutCsrf(String url) throws Exception {
+            return send(MockMvcRequestBuilders.delete(url), false);
         }
 
         /** Any request built by the test (extra headers, query params) with this client's cookies, IP and CSRF header. */

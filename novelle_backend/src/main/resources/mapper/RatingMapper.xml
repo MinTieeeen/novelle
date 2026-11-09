@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.RatingMapper">
+
+    <select id="publicStoryAuthorId" resultType="java.lang.Integer">
+        SELECT AuthorId FROM dbo.vw_PublicStory WHERE StoryId = #{storyId}
+    </select>
+
+    <!--
+      Insert or update in one statement. WITH (HOLDLOCK) keeps the key range locked from the lookup to the write,
+      so two concurrent saves of the same user cannot both INSERT. trg_Rating then recomputes Story.RatingAvg and
+      RatingCount, which X-locks the story row until commit: concurrent ratings of one story queue on that row
+      (hot row, docs/module-library.md NFR-M4-07). No OUTPUT clause: Rating has a trigger (D8).
+    -->
+    <update id="upsert">
+        MERGE dbo.Rating WITH (HOLDLOCK) AS t
+        USING (SELECT #{userId} AS UserId, #{storyId} AS StoryId,
+                      CAST(#{score} AS TINYINT) AS Score, #{review, jdbcType=NVARCHAR} AS Review) AS src
+           ON t.UserId = src.UserId AND t.StoryId = src.StoryId
+        WHEN MATCHED THEN
+            UPDATE SET Score = src.Score, Review = src.Review, UpdatedAt = SYSUTCDATETIME()
+        WHEN NOT MATCHED THEN
+            INSERT (UserId, StoryId, Score, Review) VALUES (src.UserId, src.StoryId, src.Score, src.Review);
+    </update>
+
+    <delete id="delete">
+        DELETE dbo.Rating WHERE UserId = #{userId} AND StoryId = #{storyId}
+    </delete>
+
+    <resultMap id="RatingMap" type="com.novelle.model.Rating" autoMapping="true">
+        <association property="user" javaType="com.novelle.model.UserRef"
+                     columnPrefix="User_" autoMapping="true"/>
+    </resultMap>
+
+    <sql id="ratingSelect">
+        SELECT r.StoryId, r.Score, r.Review, r.CreatedAt, r.UpdatedAt,
+               u.UserId AS User_UserId, u.Username AS User_Username, u.AvatarUrl AS User_AvatarUrl
+        FROM dbo.Rating r
+        JOIN dbo.[User] u ON u.UserId = r.UserId
+    </sql>
+
+    <select id="findMine" resultMap="RatingMap">
+        <include refid="ratingSelect"/>
+        WHERE r.UserId = #{userId} AND r.StoryId = #{storyId}
+    </select>
+
+    <sql id="storyFilter">
+        WHERE r.StoryId = #{storyId}
+        <if test="hasReview">AND r.Review IS NOT NULL</if>
+    </sql>
+
+    <!-- join Rating ⋈ [User]; seeks IX_Rating_Story (StoryId, UpdatedAt DESC) -->
+    <select id="pageByStory" resultMap="RatingMap">
+        <include refid="ratingSelect"/>
+        <include refid="storyFilter"/>
+        ORDER BY r.UpdatedAt DESC, r.UserId DESC
+        OFFSET #{offset} ROWS FETCH NEXT #{size} ROWS ONLY
+    </select>
+
+    <select id="countByStory" resultType="long">
+        SELECT COUNT(*) FROM dbo.Rating r
+        <include refid="storyFilter"/>
+    </select>
+
+    <!-- aggregate GROUP BY: served by IX_Rating_Story, which INCLUDEs Score -->
+    <select id="distribution" resultType="com.novelle.model.ScoreCount">
+        SELECT r.Score, COUNT(*) AS Total
+        FROM dbo.Rating r
+        WHERE r.StoryId = #{storyId}
+        GROUP BY r.Score
+    </select>
+
+    <!-- read after the write in the same transaction: the trigger has already recomputed the values -->
+    <select id="storyRatingStats" resultType="com.novelle.model.RatingStats" flushCache="true" useCache="false">
+        SELECT RatingAvg, RatingCount FROM dbo.Story WHERE StoryId = #{storyId}
+    </select>
+</mapper>
