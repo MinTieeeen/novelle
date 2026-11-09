@@ -59,7 +59,17 @@ public enum ErrorCode {
     ONLY_READER_CAN_REQUEST(HttpStatus.FORBIDDEN, "Only readers can request to become an author."),
     AUTHOR_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "Author request not found."),
     REQUEST_ALREADY_PENDING(HttpStatus.CONFLICT, "You already have a pending author request."),
-    REVIEW_IN_PROGRESS(HttpStatus.CONFLICT, "Another administrator is reviewing this request; try again shortly.");
+    REVIEW_IN_PROGRESS(HttpStatus.CONFLICT, "Another administrator is reviewing this request; try again shortly."),
+
+    // studio (author side: stories, volumes, chapters, revisions)
+    VOLUME_NOT_IN_STORY(HttpStatus.BAD_REQUEST, "The volume does not belong to this story."),
+    VOLUME_NOT_FOUND(HttpStatus.NOT_FOUND, "Volume not found."),
+    REVISION_NOT_FOUND(HttpStatus.NOT_FOUND, "Revision not found."),
+    STORY_HIDDEN(HttpStatus.CONFLICT, "The story was hidden by an administrator; its status cannot be changed."),
+    STORY_HAS_NO_CHAPTER(HttpStatus.CONFLICT, "Publish at least one chapter before publishing the story."),
+    CHAPTER_EMPTY(HttpStatus.CONFLICT, "The chapter has no content yet."),
+    CHAPTER_ALREADY_PUBLISHED(HttpStatus.CONFLICT, "The chapter is already published."),
+    VOLUME_NOT_EMPTY(HttpStatus.CONFLICT, "The volume still has chapters.");
 
     private final HttpStatus status;
     private final String defaultMessage;
