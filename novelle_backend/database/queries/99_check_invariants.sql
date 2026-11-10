@@ -135,6 +135,12 @@ FROM (
     SELECT 'RB16.AdminAuthorRequest', CAST(r.RequestId AS VARCHAR(40)), 'ADMIN submitted an author request'
     FROM dbo.AuthorRequest r JOIN dbo.[User] u ON u.UserId = r.UserId WHERE u.Role = 'ADMIN'
 
+    /* ---- RB16: the system always keeps at least one ACTIVE administrator ---- */
+
+    UNION ALL
+    SELECT 'RB16.ActiveAdmins', 'system', 'no ACTIVE ADMIN left'
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.[User] WHERE Role = 'ADMIN' AND Status = 'ACTIVE')
+
     /* ---- RB6: 1-3 genres, exactly one primary, at most 10 tags ---- */
 
     UNION ALL

@@ -37,7 +37,7 @@ import org.mockito.InOrder;
 class ChapterReadServiceTest {
 
     private static final CacheTtlProperties TTL = new CacheTtlProperties(Duration.ofHours(1), Duration.ofMinutes(2),
-            Duration.ofMinutes(10), Duration.ofMinutes(30));
+            Duration.ofMinutes(10), Duration.ofMinutes(30), Duration.ofMinutes(5));
 
     private ChapterMapper chapterMapper;
     private ReadingHistoryMapper historyMapper;

@@ -37,6 +37,11 @@ spring:
     time-zone: UTC
     default-property-inclusion: non_null
 
+logging:
+  level:
+    root: INFO
+    com.novelle: DEBUG
+
 server:
   port: ${SERVER_PORT:8080}
   servlet:
@@ -54,6 +59,7 @@ mybatis:
     map-underscore-to-camel-case: false   # columns are PascalCase; auto-mapping is case-insensitive
     default-statement-timeout: 30
     jdbc-type-for-null: NULL
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
 springdoc:
   swagger-ui:
@@ -114,6 +120,7 @@ app:
       home: ${CACHE_HOME_TTL:2m}
       story: ${CACHE_STORY_TTL:10m}
       chapter: ${CACHE_CHAPTER_TTL:30m}
+      stats: ${CACHE_STATS_TTL:5m}
   # View counting (G6): Redis counters per Vietnam calendar day, flushed to SQL Server by sp_FlushViews.
   views:
     key-prefix: ${VIEWS_KEY_PREFIX:views:}

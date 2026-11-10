@@ -46,7 +46,8 @@ Package `com.novelle`, **by layer**; layer packages are flat, class names carry 
 | `infrastructure.views` | `ViewKeys` (only place that names `views:*` keys), `ViewCounterStore` (Lua in `resources/redis/`), `ViewCounterService`, `ViewFlusher` + `ViewFlushJob` |
 | `infrastructure.ratelimit` | `@RateLimited`, interceptor, Redis fixed window |
 | `infrastructure.cache` | `CacheService` (cache-aside, fail open), `CacheKeys`, `CacheTtlProperties`; `RedisLockService` + `LockKeys` (`lock:*`, `SET NX PX`, Lua release; only for the optional author-request review lock `APP_DEMO_REDIS_LOCK`) |
-| `infrastructure.jobs` / `html` | `sp_PublishScheduled` job, chapter HTML sanitizer (not built yet, M6) |
+| `infrastructure.jobs` | `ScheduledPublisher` (always present, tests call it) + `ScheduledPublishJob` (`@Scheduled`, only when jobs are on): `sp_PublishScheduled`, then cache eviction using the database clock |
+| `infrastructure.html` | `HtmlSanitizer` (jsoup allowlist `p, h2–h4, br, em, strong, blockquote`, no attributes), `WordCounter`, `SlugGenerator` |
 
 Jobs: `@Scheduled` runs only when `app.jobs.enabled` (`JOBS_ENABLED`, `config/SchedulingConfig`). Every `@SpringBootTest` must use `TestProperties.JOBS_OFF` and `TestProperties.VIEWS_PREFIX` (test views under `it:views:`), otherwise the flush job commits real rows to the shared RDS.
 

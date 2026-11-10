@@ -69,7 +69,15 @@ public enum ErrorCode {
     STORY_HAS_NO_CHAPTER(HttpStatus.CONFLICT, "Publish at least one chapter before publishing the story."),
     CHAPTER_EMPTY(HttpStatus.CONFLICT, "The chapter has no content yet."),
     CHAPTER_ALREADY_PUBLISHED(HttpStatus.CONFLICT, "The chapter is already published."),
-    VOLUME_NOT_EMPTY(HttpStatus.CONFLICT, "The volume still has chapters.");
+    VOLUME_NOT_EMPTY(HttpStatus.CONFLICT, "The volume still has chapters."),
+
+    // administration (users, content, catalog)
+    CANNOT_BAN_ADMIN(HttpStatus.FORBIDDEN, "Administrator accounts cannot be banned."),
+    GENRE_NOT_FOUND(HttpStatus.NOT_FOUND, "Genre not found."),
+    TAG_NOT_FOUND(HttpStatus.NOT_FOUND, "Tag not found."),
+    GENRE_NAME_TAKEN(HttpStatus.CONFLICT, "A genre with this name already exists."),
+    TAG_NAME_TAKEN(HttpStatus.CONFLICT, "A tag with this name already exists."),
+    GENRE_IN_USE(HttpStatus.CONFLICT, "The genre is still used by stories.");
 
     private final HttpStatus status;
     private final String defaultMessage;

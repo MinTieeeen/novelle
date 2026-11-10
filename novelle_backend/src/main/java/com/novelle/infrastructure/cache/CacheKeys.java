@@ -30,4 +30,12 @@ public final class CacheKeys {
     public static String chapter(long chapterId) {
         return "cache:chapter:" + chapterId;
     }
+
+    /**
+     * One admin statistic with its default parameters ({@code overview}, {@code views}, {@code genres},
+     * {@code users}, {@code top-authors}); expires by itself (docs/module-admin.md D6).
+     */
+    public static String stats(String name) {
+        return "cache:stats:" + name;
+    }
 }
