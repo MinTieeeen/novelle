@@ -15,7 +15,7 @@ React SPA for Novelle: reader site, author Studio and Admin console. Repository-
 
 ## Stack
 
-TypeScript, React 18, Vite 6, shadcn/ui (Radix) + Tailwind CSS 4 (`@tailwindcss/vite`), lucide-react, Sonner, React Hook Form + Zod, TanStack Table, React Router 6, TanStack Query, Axios, TipTap, DOMPurify, Recharts, Day.js. Lint/format: ESLint, Prettier. Tests: Vitest + React Testing Library, Playwright (on the installed Edge). Node.js 22 LTS, npm.
+TypeScript, React 19, Vite 6, shadcn/ui (Radix) + Tailwind CSS 4 (`@tailwindcss/vite`), lucide-react, Sonner, React Hook Form + Zod, TanStack Table, React Router 6, TanStack Query, Axios, TipTap, DOMPurify, Recharts, Day.js. Lint/format: ESLint, Prettier. Tests: Vitest + React Testing Library, Playwright (on the installed Edge). Node.js 22 LTS, npm.
 
 ## Commands
 

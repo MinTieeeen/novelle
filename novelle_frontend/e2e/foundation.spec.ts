@@ -45,6 +45,19 @@ test('site stays light when the OS prefers dark', async ({ page, api: _api }) =>
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(247, 247, 250)');
 });
 
+test('mobile menu opens from the header and closes after navigating', async ({ page, api: _api, isMobile }) => {
+  test.skip(!isMobile, 'The header menu button only exists below md');
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Mở menu' }).click();
+  const sheet = page.getByRole('dialog');
+  await expect(sheet.getByRole('link', { name: 'Trang chủ' })).toBeVisible();
+  await sheet.getByRole('link', { name: 'Thể loại' }).click();
+  await expect(page).toHaveURL('/search');
+  await expect(sheet).toBeHidden();
+  // Radix returns focus to the trigger: needs the ref to reach Button (broken on React 18).
+  await expect(page.getByRole('button', { name: 'Mở menu' })).toBeFocused();
+});
+
 test('unknown route shows the 404 page', async ({ page, api: _api }) => {
   await page.goto('/khong-ton-tai');
   await expect(page.getByRole('heading', { name: 'Không tìm thấy trang này' })).toBeVisible();

@@ -36,7 +36,7 @@ All data comes from the Novelle REST API ([`../novelle_backend`](../novelle_back
 | Area | Technology |
 |---|---|
 | Language | TypeScript |
-| UI framework | React 18 |
+| UI framework | React 19 |
 | Build tool and dev server | Vite |
 | Component library | shadcn/ui (components copied into `src/components/ui/`, built on Radix UI primitives) |
 | Styling | Tailwind CSS 4 (`@tailwindcss/vite`); a single light theme through CSS variables (no dark mode) |
