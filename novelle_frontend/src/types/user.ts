@@ -3,6 +3,12 @@ import { z } from 'zod';
 export type Role = 'READER' | 'AUTHOR' | 'ADMIN';
 export type UserStatus = 'ACTIVE' | 'BANNED';
 
+export const ROLE_LABEL: Record<Role, string> = {
+  READER: 'Người đọc',
+  AUTHOR: 'Tác giả',
+  ADMIN: 'Quản trị viên',
+};
+
 /** GET /api/me, POST /api/auth/login, POST /api/auth/register (com.novelle.dto.MeResponse). */
 export interface Me {
   userId: number;

@@ -24,6 +24,22 @@ export interface ApiErrorOptions<T extends FieldValues> {
 const GENERIC_FIELD = 'Giá trị chưa hợp lệ.';
 
 /**
+ * First field error in the order the fields appear on screen (skips errors without text, such as the
+ * red border put on "login" next to an INVALID_CREDENTIALS message). Used by forms that report errors
+ * in a toast instead of under each field (login and register popup).
+ */
+export function firstFieldError<T extends FieldValues>(
+  errors: Partial<Record<Path<T>, { message?: string } | undefined>>,
+  order: readonly Path<T>[],
+): { field: Path<T>; message: string } | null {
+  for (const field of order) {
+    const message = errors[field]?.message;
+    if (message) return { field, message };
+  }
+  return null;
+}
+
+/**
  * Puts an API error onto the form fields: listed codes go to their field, VALIDATION_FAILED details go
  * to the field with the same name. Returns true when the error was shown on a field, so the caller only
  * needs a toast for the other cases.

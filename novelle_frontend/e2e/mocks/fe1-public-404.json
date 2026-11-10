@@ -1,0 +1,1 @@
+{ "GET /users/khongco": { "status": 404, "body": { "status": 404, "code": "USER_NOT_FOUND", "message": "User not found." } } }

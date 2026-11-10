@@ -1,8 +1,8 @@
-import { BookMarked, LogOut, PenTool, Shield, UserRound } from 'lucide-react';
+import { BookMarked, IdCard, LogOut, PenTool, Shield, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth/AuthProvider';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { UserAvatar } from '@/components/common/UserAvatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,9 +11,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { initials } from '@/utils/format';
 
-/** Avatar button that opens the account menu: profile, library, role areas, log out. */
+/** Avatar button that opens the account menu: profile, public profile, role areas, log out. */
 export function UserMenu() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -33,12 +32,7 @@ export function UserMenu() {
         aria-label={`Tài khoản của ${user.displayName}`}
         className="rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid"
       >
-        <Avatar className="size-9">
-          {user.avatarUrl && <AvatarImage src={user.avatarUrl} alt="" />}
-          <AvatarFallback className="bg-accent text-small font-semibold text-accent-foreground">
-            {initials(user.displayName)}
-          </AvatarFallback>
-        </Avatar>
+        <UserAvatar name={user.displayName} avatarUrl={user.avatarUrl} size="nav" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuLabel className="flex flex-col">
@@ -48,6 +42,9 @@ export function UserMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => navigate('/profile')}>
           <UserRound /> Hồ sơ
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate(`/users/${encodeURIComponent(user.username)}`)}>
+          <IdCard /> Hồ sơ công khai
         </DropdownMenuItem>
         {user.role !== 'ADMIN' && (
           <DropdownMenuItem onSelect={() => navigate('/library')}>

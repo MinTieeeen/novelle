@@ -46,7 +46,11 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
     setState({ open: true, tab });
   }, []);
 
-  const close = useCallback(() => setState((s) => ({ ...s, open: false })), []);
+  /** Close without calling onDismiss (route change, programmatic close). */
+  const close = useCallback(() => {
+    options.current = {};
+    setState((s) => ({ ...s, open: false }));
+  }, []);
 
   const finish = useCallback(
     (me: Me) => {

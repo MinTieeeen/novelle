@@ -3,10 +3,13 @@ import { expect, test } from './fixtures/api';
 
 /* FE0 foundation: shell, guards, theme. Every API call is mocked. */
 
-test('guest sees login and register in the header', async ({ page, api: _api }) => {
+test('guest sees the login (and, from sm, register) buttons in the header', async ({ page, api: _api, isMobile }) => {
   await page.goto('/');
-  await expect(page.getByRole('link', { name: 'Đăng ký' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Đăng nhập' })).toBeVisible();
+  const header = page.getByRole('banner');
+  await expect(header.getByRole('button', { name: 'Đăng nhập' })).toBeVisible();
+  // Below sm only "Đăng nhập" fits; the popup has the Đăng ký tab.
+  if (isMobile) await expect(header.getByRole('button', { name: 'Đăng ký' })).toBeHidden();
+  else await expect(header.getByRole('button', { name: 'Đăng ký' })).toBeVisible();
 });
 
 test('guest is sent to /login with a redirect from a guarded route', async ({ page, api: _api }) => {
@@ -50,7 +53,7 @@ test('mobile menu opens from the header and closes after navigating', async ({ p
   await page.goto('/');
   await page.getByRole('button', { name: 'Mở menu' }).click();
   const sheet = page.getByRole('dialog');
-  await expect(sheet.getByRole('link', { name: 'Trang chủ' })).toBeVisible();
+  await expect(sheet.getByRole('link', { name: 'Thể loại' })).toBeVisible();
   await sheet.getByRole('link', { name: 'Thể loại' }).click();
   await expect(page).toHaveURL('/search');
   await expect(sheet).toBeHidden();

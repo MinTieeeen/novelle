@@ -1,8 +1,9 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { PasswordInput } from '@/components/auth/PasswordInput';
+import { useToastFormErrors } from '@/components/auth/useToastFormErrors';
 import { SubmitButton } from '@/components/common/SubmitButton';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { useCooldown } from '@/hooks/useCooldown';
 import { loginSchema, MSG, type LoginValues } from '@/types/user';
@@ -14,26 +15,43 @@ interface LoginFormProps {
   onSubmit: (values: LoginValues) => Promise<unknown>;
 }
 
-/** Login tab of the AuthModal board: username or email, password, one primary button. */
+const ORDER = ['login', 'password'] as const;
+
+/**
+ * Login tab of the AuthModal board: username or email, password, one primary button.
+ * Field errors (Zod and API) are reported one at a time in a toast, in field order.
+ */
 export function LoginForm({ onSubmit }: LoginFormProps) {
-  const form = useForm<LoginValues>({ resolver: zodResolver(loginSchema), defaultValues: { login: '', password: '' } });
+  const form = useForm<LoginValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { login: '', password: '' },
+    shouldFocusError: false,
+  });
   const cooldown = useCooldown();
+  const errors = useToastFormErrors(form, ORDER);
 
   async function submit(values: LoginValues) {
     try {
       await onSubmit(values);
+      errors.clear();
     } catch (e) {
       if (hasCode(e, 'RATE_LIMITED')) cooldown.start(retryAfterSeconds(e) ?? 30);
-      applyApiError(form, e, {
+      const onField = applyApiError(form, e, {
         codes: { INVALID_CREDENTIALS: { field: 'password', alsoInvalid: ['login'] } },
         fieldMessages: { login: MSG.loginRequired, password: MSG.passwordRequired },
       });
+      if (onField) errors.report();
     }
   }
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(submit)} noValidate aria-label="Đăng nhập" className="flex flex-col gap-4">
+      <form
+        onSubmit={form.handleSubmit(submit, (e) => errors.report(e))}
+        noValidate
+        aria-label="Đăng nhập"
+        className="flex flex-col gap-3"
+      >
         <FormField
           control={form.control}
           name="login"
@@ -41,9 +59,15 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
             <FormItem>
               <FormLabel>Tên đăng nhập hoặc email</FormLabel>
               <FormControl>
-                <Input autoComplete="username" autoCapitalize="none" spellCheck={false} className="h-11" {...field} />
+                <Input
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder="Ví dụ: john hoặc john@gmail.com"
+                  className="h-11"
+                  {...field}
+                />
               </FormControl>
-              <FormMessage />
             </FormItem>
           )}
         />
@@ -54,9 +78,8 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
             <FormItem>
               <FormLabel>Mật khẩu</FormLabel>
               <FormControl>
-                <PasswordInput autoComplete="current-password" className="h-11" {...field} />
+                <PasswordInput autoComplete="current-password" placeholder="********" className="h-11" {...field} />
               </FormControl>
-              <FormMessage />
             </FormItem>
           )}
         />

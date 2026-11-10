@@ -1,6 +1,7 @@
 import { ChevronDown, Menu, PenTool, Search, Shield } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Link, NavLink, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuthModal } from '@/auth/AuthModalProvider';
 import { useAuth } from '@/auth/AuthProvider';
 import { Logo } from '@/components/brand/Logo';
 import { Container } from '@/components/layout/Container';
@@ -34,14 +35,14 @@ export function SiteHeader() {
   }
 
   const navItems = [
-    { to: '/', label: 'Trang chủ', end: true },
+    // { to: '/', label: 'Trang chủ', end: true },
     { to: '/search', label: 'Thể loại', end: false, chevron: true },
     ...(user && user.role !== 'ADMIN' ? [{ to: '/library', label: 'Thư viện', end: false }] : []),
   ];
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-card">
-      <Container className="flex min-h-header items-center gap-x-6 gap-y-3">
+      <Container className="flex min-h-header items-center gap-x-2 gap-y-3 sm:gap-x-6">
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="md:hidden" aria-label="Mở menu">
@@ -65,7 +66,7 @@ export function SiteHeader() {
         </Sheet>
 
         <Link to="/" aria-label="Novelle — Trang chủ" className="flex shrink-0">
-          <Logo alt="Novelle" />
+          <Logo alt="Novelle" className="h-6 sm:h-[30px]" />
         </Link>
 
         <nav aria-label="Chính" className="hidden gap-1 md:flex">
@@ -77,7 +78,13 @@ export function SiteHeader() {
           ))}
         </nav>
 
-        <form role="search" onSubmit={submitSearch} className="flex flex-1 justify-end">
+        {/* Below sm the search box collapses into an icon button (SiteHeader spec). */}
+        <Button variant="ghost" size="icon" asChild className="ml-auto sm:hidden">
+          <Link to="/search" aria-label="Tìm truyện, tác giả">
+            <Search />
+          </Link>
+        </Button>
+        <form role="search" onSubmit={submitSearch} className="hidden flex-1 justify-end sm:flex">
           <label className="flex h-10 w-full max-w-[360px] items-center gap-2 rounded-md bg-secondary px-3 text-muted-foreground focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring focus-within:outline-solid">
             <Search className="size-[18px] shrink-0" strokeWidth={1.75} aria-hidden />
             <input
@@ -132,14 +139,20 @@ function SignedInActions() {
   );
 }
 
+/** Guests open the login/register popup over the current page (they stay on it after logging in). */
 function GuestActions() {
+  const authModal = useAuthModal();
   return (
     <div className="flex items-center gap-2">
-      <Button variant="ghost" asChild>
-        <Link to="/login">Đăng nhập</Link>
+      {/* Below sm only one button fits; the popup has the Đăng ký tab. */}
+      <Button variant="ghost" className="hidden sm:inline-flex" onClick={() => authModal.open('login')}>
+        Đăng nhập
       </Button>
-      <Button asChild>
-        <Link to="/register">Đăng ký</Link>
+      <Button className="sm:hidden" onClick={() => authModal.open('login')}>
+        Đăng nhập
+      </Button>
+      <Button className="hidden sm:inline-flex" onClick={() => authModal.open('register')}>
+        Đăng ký
       </Button>
     </div>
   );

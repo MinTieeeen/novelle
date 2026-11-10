@@ -1,5 +1,6 @@
-import { PlaceholderPage } from '@/components/common/PlaceholderPage';
+import { AuthEntryPage } from '@/pages/account/AuthEntryPage';
 
+/** A2 · /register : home page + register popup. */
 export default function RegisterPage() {
-  return <PlaceholderPage title="Đăng ký" screen="A2" />;
+  return <AuthEntryPage tab="register" />;
 }

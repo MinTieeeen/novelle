@@ -1,5 +1,6 @@
-import { PlaceholderPage } from '@/components/common/PlaceholderPage';
+import { AuthEntryPage } from '@/pages/account/AuthEntryPage';
 
+/** A1 · /login?redirect= : home page + login popup. */
 export default function LoginPage() {
-  return <PlaceholderPage title="Đăng nhập" screen="A1" />;
+  return <AuthEntryPage tab="login" />;
 }
