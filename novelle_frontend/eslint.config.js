@@ -28,7 +28,7 @@ export default tseslint.config(
   { files: ['scripts/**/*.mjs'], languageOptions: { globals: globals.node } },
   // shadcn files export variants next to components; providers export their hook; the router holds lazy pages.
   {
-    files: ['src/components/ui/**', 'src/app/**', 'src/auth/AuthProvider.tsx'],
+    files: ['src/components/ui/**', 'src/app/**', 'src/auth/*Provider.tsx'],
     rules: { 'react-refresh/only-export-components': 'off' },
   },
 );

@@ -36,9 +36,14 @@ const page = (node: ReactNode) => <Suspense fallback={<FullPageSpinner />}>{node
 
 // Dev-only token/component preview; the import is dropped from production builds.
 const DesignSystemPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/DesignSystemPage')) : null;
-const devRoutes: RouteObject[] = DesignSystemPage
-  ? [{ path: 'dev/design-system', element: page(<DesignSystemPage />) }]
-  : [];
+const AccountPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/AccountPreviewPage')) : null;
+const devRoutes: RouteObject[] =
+  DesignSystemPage && AccountPreviewPage
+    ? [
+        { path: 'dev/design-system', element: page(<DesignSystemPage />) },
+        { path: 'dev/account', element: page(<AccountPreviewPage />) },
+      ]
+    : [];
 
 export const routes: RouteObject[] = [
   {

@@ -21,7 +21,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }}
       toastOptions={{
         classNames: {
-          toast: "!rounded-lg !border-border !bg-card !text-foreground !shadow-raise font-sans",
+          toast: "!rounded-lg !border-border !bg-card !py-3.5 !pr-12 !pl-4 !text-foreground !shadow-raise font-sans",
+          // Toast board: close button on the right, vertically centred, 32px, muted.
+          closeButton:
+            "!top-1/2 !right-2 !left-auto !size-8 !-translate-y-1/2 !translate-x-0 !rounded-md !border-0 !bg-transparent !text-muted-foreground hover:!bg-secondary hover:!text-foreground [&_svg]:!size-4",
           title: "!text-label !font-normal",
           description: "!text-small !text-muted-foreground",
           actionButton: "!h-8 !rounded-md !bg-accent !px-2.5 !text-small !font-semibold !text-accent-foreground",

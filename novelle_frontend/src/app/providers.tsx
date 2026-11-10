@@ -5,6 +5,7 @@ import { setHttpErrorHandlers } from '@/api/http';
 import { queryKeys } from '@/api/queryKeys';
 import { queryClient } from '@/app/queryClient';
 import { router } from '@/app/router';
+import { AuthModalProvider } from '@/auth/AuthModalProvider';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -57,10 +58,12 @@ export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TooltipProvider delayDuration={300}>
-          {children}
-          <Toaster />
-        </TooltipProvider>
+        <AuthModalProvider>
+          <TooltipProvider delayDuration={300}>
+            {children}
+            <Toaster />
+          </TooltipProvider>
+        </AuthModalProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
