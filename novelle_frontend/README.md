@@ -17,14 +17,14 @@ All data comes from the Novelle REST API ([`../novelle_backend`](../novelle_back
 | F1 | Home: recently updated, new and top-rated stories, genre shortcuts | All | `/` |
 | F2 | Search and filter by keyword, genre, tag, status, chapter count and rating | All | `/search` |
 | F3 | Story detail with table of contents grouped by volume; author page with follow button | All | `/stories/:slug`, `/authors/:authorId` |
-| F4 | Chapter reader: previous/next navigation, reading settings (font size, theme), automatic progress saving | All | `/read/:chapterId` |
-| F5 | Library: continue reading, followed stories, followed authors, personal reading lists | READER, AUTHOR | `/library`, `/library/lists/:listId` |
+| F4 | Chapter reader: previous/next navigation, reading settings (font size, theme), automatic progress saving | All | `/chapters/:chapterId` |
+| F5 | Library: continue reading, followed stories, followed authors, personal reading lists | READER, AUTHOR | `/library`, `/lists/:listId` |
 | F6 | Star rating and written review on the story page | READER, AUTHOR | `/stories/:slug` |
 | F7 | Request to become an author and see whether it was approved | READER | `/become-author` |
-| F8 | Manage own stories: create, edit, cover, genres, tags, soft delete | AUTHOR | `/studio`, `/studio/stories/:storyId` |
+| F8 | Manage own stories: create, edit, cover, genres, tags, soft delete | AUTHOR | `/studio`, `/studio/stories/new`, `/studio/stories/:storyId`, `/studio/profile` |
 | F9 | Chapter editor with autosave, publish now or schedule, revision history | AUTHOR | `/studio/stories/:storyId/chapters/:chapterId` |
 | F10 | Author dashboard: views over time, followers, ratings | AUTHOR | `/studio/dashboard` |
-| F11 | User management and author request review | ADMIN | `/admin/users`, `/admin/author-requests` |
+| F11 | User management and author request review | ADMIN | `/admin/users`, `/admin/author-requests`, `/admin/author-requests/:requestId` |
 | F12 | Content moderation and genre/tag management | ADMIN | `/admin/stories`, `/admin/catalog` |
 | F13 | Platform statistics | ADMIN | `/admin/dashboard` |
 | — | Register, log in, log out, edit profile | All | `/login`, `/register`, `/profile` |
@@ -198,16 +198,24 @@ Log in with a seeded account (`reader01`, `reader02`, `author01` or `admin`) usi
 
 ### 5.2 Routing and access control
 
+Routes follow the screen design (board ids in brackets); the table is implemented in `src/app/router.tsx`.
+
 ```
-/                       ReaderLayout   (public)
-├─ /search, /stories/:slug, /authors/:authorId, /read/:chapterId
-├─ /library/**          RequireRole(READER, AUTHOR)
-├─ /become-author       RequireRole(READER)
-└─ /profile             RequireRole(any logged-in user)
-/studio/**              StudioLayout   RequireRole(AUTHOR)
-/admin/**               AdminLayout    RequireRole(ADMIN)
-/login, /register       public
-*                       NotFoundPage
+/                         ReaderLayout   (public)                          [R1]
+├─ /search, /stories/:slug, /authors/:authorId, /users/:username            [R2, R3, R4]
+├─ /login, /register      public; the design shows a popup over the home page [A1, A2]
+├─ /library, /lists/:listId  RequireRole(READER, AUTHOR)                     [R7, R8]
+├─ /become-author         RequireRole(READER)                               [R10]
+├─ /profile               RequireRole(any logged-in user)
+└─ /dev/design-system     dev builds only: token and component preview
+/chapters/:chapterId      full-screen reader, no layout (public)            [R6]
+/studio                   RequireRole(AUTHOR)
+├─ StudioLayout: /studio, /studio/stories/new, /studio/stories/:storyId,
+│                /studio/dashboard, /studio/profile                         [S1, S2, S3, S5, S6]
+└─ /studio/stories/:storyId/chapters/:chapterId  full-screen editor         [S4]
+/admin                    AdminLayout    RequireRole(ADMIN)   (/admin → /admin/dashboard)
+└─ dashboard, users, author-requests, author-requests/:requestId, stories, catalog  [AD1–AD6]
+*                         NotFoundPage
 ```
 
 Navigation also adapts to the role: the "Studio" link appears only for authors, "Admin" only for admins, and "Become an author" only for readers. The backend checks permissions again on every request, so hiding links is for convenience, not security.

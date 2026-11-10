@@ -1,0 +1,53 @@
+/*
+ * Chapter reading surface. The three reading themes are fixed and do not follow the site theme (.dark).
+ * useReaderSettings writes data-theme, --reader-size and --reader-leading on the .reader element.
+ */
+.reader {
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  font-size: var(--reader-size, 19px);
+  line-height: var(--reader-leading, 1.75);
+  overflow-wrap: break-word;
+}
+.reader[data-theme='paper'] {
+  background: var(--color-reader-paper);
+  color: var(--color-reader-paper-ink);
+}
+.reader[data-theme='sepia'] {
+  background: var(--color-reader-sepia);
+  color: var(--color-reader-sepia-ink);
+}
+.reader[data-theme='night'] {
+  background: var(--color-reader-night);
+  color: var(--color-reader-night-ink);
+}
+.reader .reader-column {
+  max-width: var(--container-reading);
+  margin-inline: auto;
+}
+.reader p {
+  margin: 0 0 1em;
+}
+.reader h2,
+.reader h3,
+.reader h4 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1.6em 0 0.6em;
+}
+.reader h2 {
+  font-size: 1.3em;
+}
+.reader h3 {
+  font-size: 1.15em;
+}
+.reader h4 {
+  font-size: 1em;
+}
+.reader blockquote {
+  border-left: 2px solid currentColor;
+  font-style: italic;
+  margin: 1em 0;
+  opacity: 0.85;
+  padding-left: 1em;
+}

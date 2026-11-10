@@ -2,7 +2,7 @@
 
 React SPA for Novelle: reader site, author Studio and Admin console. Repository-wide rules are in [../CLAUDE.md](../CLAUDE.md); the full design (structure, routes, flows) is in [README.md](README.md).
 
-**Status:** not started; only the README exists. Scaffold following the README structure, phase by phase.
+**Status:** foundation done (Vite scaffold, design-system tokens in `styles/globals.css`, adjusted shadcn components, API client, auth, router with placeholder pages). Feature modules replace the placeholders one by one. Design: screens `claude.ai/artifact/HkNN1A2AFHmLbzQT3wSC5j`, design system `claude.ai/artifact/E8GRZtn61b9Z9tyRMdNytN`; preview the tokens at `/dev/design-system`.
 
 ## Stack
 
