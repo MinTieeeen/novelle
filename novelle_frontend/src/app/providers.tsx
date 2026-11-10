@@ -4,26 +4,41 @@ import { toast } from 'sonner';
 import { setHttpErrorHandlers } from '@/api/http';
 import { queryKeys } from '@/api/queryKeys';
 import { queryClient } from '@/app/queryClient';
+import { router } from '@/app/router';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { bannedDescription, rateLimitedMessage } from '@/utils/errors';
+
+/** Drop every personal query and mark the visitor as a guest. */
+function clearSession() {
+  queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== queryKeys.me[0] });
+  queryClient.setQueryData(queryKeys.me, null);
+}
 
 /**
- * Global reactions to API errors (README §5.3). 401 clears the user and sends them to /login with a
- * redirect back; 403 pages are rendered by the route guard or the page itself; 409 is left to the caller.
+ * Global reactions to API errors (README §5.3, module-users §10.5). 401 clears the user and opens
+ * /login with a redirect back; ACCOUNT_BANNED mid-session clears everything and goes home with a toast;
+ * 403 pages are rendered by the route guard or the page itself; 409 is left to the caller.
+ * Navigation goes through the router (no reload), so toasts survive.
  */
 function useHttpErrorHandlers() {
   useEffect(() => {
     setHttpErrorHandlers({
       onUnauthenticated: () => {
         queryClient.setQueryData(queryKeys.me, null);
-        const here = window.location.pathname + window.location.search;
-        if (!window.location.pathname.startsWith('/login')) {
-          window.location.assign(`/login?redirect=${encodeURIComponent(here)}`);
+        const { pathname, search } = window.location;
+        if (!pathname.startsWith('/login')) {
+          void router.navigate(`/login?redirect=${encodeURIComponent(pathname + search)}`, { replace: true });
         }
       },
-      onRateLimited: () => {
-        toast.warning('Bạn thao tác quá nhanh. Thử lại sau ít phút.', { id: 'rate-limited' });
+      onBanned: (error) => {
+        clearSession();
+        toast.error('Tài khoản đã bị khoá', { id: 'account-banned', description: bannedDescription(error) });
+        void router.navigate('/', { replace: true });
+      },
+      onRateLimited: (error) => {
+        toast.warning(rateLimitedMessage(error), { id: 'rate-limited' });
       },
       onServerError: (error) => {
         const message =

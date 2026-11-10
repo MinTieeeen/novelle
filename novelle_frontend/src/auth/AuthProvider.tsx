@@ -20,12 +20,15 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-/** A 401 from /api/me means "guest", not an error. */
+/**
+ * A 401 from /api/me means "guest", not an error. So does 403 ACCOUNT_BANNED: UserStatusFilter has just
+ * destroyed the session of a banned user.
+ */
 async function fetchMeOrGuest(): Promise<Me | null> {
   try {
     return await authApi.getMe();
   } catch (e) {
-    if (isApiError(e) && e.status === 401) return null;
+    if (isApiError(e) && (e.status === 401 || e.code === 'ACCOUNT_BANNED')) return null;
     throw e;
   }
 }

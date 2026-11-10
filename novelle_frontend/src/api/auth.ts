@@ -1,5 +1,5 @@
 import { ensureCsrfToken, http } from '@/api/http';
-import type { Me } from '@/types/user';
+import type { ChangePasswordBody, Me, UpdateProfileBody } from '@/types/user';
 
 export interface LoginBody {
   /** Username or email */
@@ -45,4 +45,16 @@ export async function register(body: RegisterBody): Promise<Me> {
 /** POST /api/auth/logout (204). */
 export async function logout(): Promise<void> {
   await http.post('/auth/logout', null, { skipGlobalErrorHandler: true });
+}
+
+/** PATCH /api/me: send the rowVersion last read; 409 STALE_DATA when someone else saved first. */
+export async function updateMe(body: UpdateProfileBody): Promise<Me> {
+  const { data } = await http.patch<Me>('/me', body);
+  return data;
+}
+
+/** PUT /api/me/password (204). The session id is renewed, so a fresh CSRF token is fetched. */
+export async function changePassword(body: ChangePasswordBody): Promise<void> {
+  await http.put('/me/password', body);
+  await ensureCsrfToken(true);
 }

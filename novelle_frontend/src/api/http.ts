@@ -31,6 +31,8 @@ export function isApiError(e: unknown): e is ApiError {
 export interface HttpErrorHandlers {
   onUnauthenticated?: (error: ApiError, config: AxiosRequestConfig) => void;
   onForbidden?: (error: ApiError, config: AxiosRequestConfig) => void;
+  /** 403 ACCOUNT_BANNED during a session (UserStatusFilter destroyed it). */
+  onBanned?: (error: ApiError) => void;
   onRateLimited?: (error: ApiError) => void;
   onServerError?: (error: ApiError) => void;
 }
@@ -122,6 +124,7 @@ http.interceptors.response.use(
 
     if (config && !config.skipGlobalErrorHandler) {
       if (apiError.status === 401) handlers.onUnauthenticated?.(apiError, config);
+      else if (apiError.code === 'ACCOUNT_BANNED') handlers.onBanned?.(apiError);
       else if (apiError.status === 403 && apiError.code === 'FORBIDDEN') handlers.onForbidden?.(apiError, config);
       else if (apiError.status === 429) handlers.onRateLimited?.(apiError);
       else if (apiError.status >= 500 || apiError.status === 0) handlers.onServerError?.(apiError);

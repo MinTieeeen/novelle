@@ -16,12 +16,13 @@ const MESSAGES: Record<string, string> = {
   RATE_LIMITED: 'Bạn thao tác quá nhanh. Thử lại sau ít phút.',
   STALE_DATA: 'Dữ liệu đã được sửa ở nơi khác. Tải lại bản mới nhất rồi thử lại.',
   ALREADY_PROCESSED: 'Mục này đã được xử lý.',
-  INVALID_CREDENTIALS: 'Tên đăng nhập, email hoặc mật khẩu chưa đúng.',
-  ACCOUNT_BANNED: 'Tài khoản này đã bị khoá.',
+  INVALID_CREDENTIALS: 'Tên đăng nhập hoặc mật khẩu không đúng. Kiểm tra lại rồi thử lần nữa.',
+  ACCOUNT_BANNED: 'Tài khoản đã bị khoá.',
   USERNAME_TAKEN: 'Tên đăng nhập này đã có người dùng. Chọn tên khác.',
   EMAIL_TAKEN: 'Email này đã được dùng cho một tài khoản khác.',
   PEN_NAME_TAKEN: 'Bút danh này đã có người dùng. Chọn bút danh khác.',
   WRONG_PASSWORD: 'Mật khẩu hiện tại chưa đúng.',
+  USER_NOT_FOUND: 'Không tìm thấy người dùng này.',
 };
 
 /** User-facing Vietnamese message for any error thrown by src/api/. */
@@ -38,4 +39,34 @@ export function fieldErrors(error: unknown): FieldError[] {
 
 export function hasCode(error: unknown, ...codes: string[]): boolean {
   return isApiError(error) && codes.includes(error.code);
+}
+
+function detail(error: unknown, key: string): unknown {
+  if (!isApiError(error) || !error.details || Array.isArray(error.details)) return undefined;
+  return (error.details as Record<string, unknown>)[key];
+}
+
+/** `details.banReason` of ACCOUNT_BANNED, when the admin gave one. */
+export function banReason(error: unknown): string | null {
+  const value = detail(error, 'banReason');
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/** `details.retryAfterSeconds` of RATE_LIMITED (at least 1), or null. */
+export function retryAfterSeconds(error: unknown): number | null {
+  const value = Number(detail(error, 'retryAfterSeconds'));
+  return Number.isFinite(value) && value > 0 ? Math.ceil(value) : null;
+}
+
+/** Toast description for a banned account: reason (if any) + what to do. */
+export function bannedDescription(error: unknown): string {
+  const reason = banReason(error);
+  const hint = 'Liên hệ quản trị viên nếu đây là nhầm lẫn.';
+  return reason ? `Lý do: ${reason}. ${hint}` : hint;
+}
+
+/** "Bạn thao tác quá nhanh. Thử lại sau 42 giây." */
+export function rateLimitedMessage(error: unknown): string {
+  const seconds = retryAfterSeconds(error);
+  return seconds ? `Bạn thao tác quá nhanh. Thử lại sau ${seconds} giây.` : MESSAGES.RATE_LIMITED;
 }
