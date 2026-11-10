@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.StudioProfileMapper">
+
+    <select id="findProfile" resultType="com.novelle.model.StudioAuthorProfile">
+        SELECT UserId AS AuthorId, PenName, Bio, IsVerified, FollowerCount, CreatedAt
+        FROM dbo.Author
+        WHERE UserId = #{authorId}
+    </select>
+
+    <!-- many conditions: same pen name (UQ_Author_PenName collation) AND someone else -->
+    <select id="penNameTakenByOther" resultType="boolean">
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.Author WHERE PenName = #{penName} AND UserId &lt;&gt; #{authorId})
+                    THEN 1 ELSE 0 END
+    </select>
+
+    <update id="updateProfile">
+        UPDATE dbo.Author
+        <set>
+            <if test="penName != null">PenName = #{penName},</if>
+            <if test="bioSet">Bio = #{bio, jdbcType=NVARCHAR},</if>
+        </set>
+        WHERE UserId = #{authorId}
+    </update>
+</mapper>

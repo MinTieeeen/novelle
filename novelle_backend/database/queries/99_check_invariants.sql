@@ -96,6 +96,14 @@ FROM (
     JOIN dbo.Volume v ON v.VolumeId = c.VolumeId
     WHERE v.StoryId <> c.StoryId
 
+    /* ---- RB11: a published chapter keeps no schedule (sp_PublishChapter / sp_PublishScheduled clear it) ---- */
+
+    UNION ALL
+    SELECT 'Chapter.PublishedWithSchedule', CAST(c.ChapterId AS VARCHAR(40)),
+           CONCAT('ScheduledAt=', CONVERT(VARCHAR(30), c.ScheduledAt, 121))
+    FROM dbo.Chapter c
+    WHERE c.Status = 'PUBLISHED' AND c.ScheduledAt IS NOT NULL
+
     /* ---- RB5: the last-read chapter belongs to the story ---- */
 
     UNION ALL

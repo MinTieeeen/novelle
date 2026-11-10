@@ -98,6 +98,15 @@ app:
       author-request:
         max-requests: ${RL_AUTHOR_REQUEST_MAX:3}
         window: ${RL_AUTHOR_REQUEST_WINDOW:1d}
+      story-create:
+        max-requests: ${RL_STORY_CREATE_MAX:10}
+        window: ${RL_STORY_CREATE_WINDOW:1h}
+      publish:
+        max-requests: ${RL_PUBLISH_MAX:10}
+        window: ${RL_PUBLISH_WINDOW:60s}
+      draft:
+        max-requests: ${RL_DRAFT_MAX:30}
+        window: ${RL_DRAFT_WINDOW:60s}
   # Cache-aside entries in Redis (CacheService, keys in CacheKeys); SQL Server stays the source of truth.
   cache:
     ttl:
@@ -113,7 +122,7 @@ app:
     flush-interval: ${VIEWS_FLUSH_INTERVAL:60s}
     flush-batch: ${VIEWS_FLUSH_BATCH:1000}
     flush-max-batches: ${VIEWS_FLUSH_MAX_BATCHES:20}
-  # @Scheduled jobs (view flush; scheduled publishing in M6). Off in tests.
+  # @Scheduled jobs (view flush, scheduled chapter publishing). Off in tests.
   jobs:
     enabled: ${JOBS_ENABLED:true}
   # Public catalog (F1): stories per home block, ratings needed to enter "top rated".
@@ -130,3 +139,10 @@ app:
     redis-lock:
       enabled: ${APP_DEMO_REDIS_LOCK:false}
       ttl: ${AUTHOR_REQUEST_LOCK_TTL:5s}
+  # Author studio (F8–F10): chapter drafts in Redis, chapter size, schedule window, scheduled-publish job.
+  studio:
+    draft-ttl: ${STUDIO_DRAFT_TTL:7d}
+    content-max-length: ${STUDIO_CONTENT_MAX_LENGTH:200000}
+    schedule-min-lead: ${STUDIO_SCHEDULE_MIN_LEAD:1m}
+    schedule-max-ahead: ${STUDIO_SCHEDULE_MAX_AHEAD:365d}
+    publish-interval: ${STUDIO_PUBLISH_INTERVAL:60s}

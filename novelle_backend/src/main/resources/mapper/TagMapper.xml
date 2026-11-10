@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.TagMapper">
+
+    <select id="findBySlugs" resultType="com.novelle.model.Tag">
+        SELECT TagId, Name, Slug, UsageCount
+        FROM dbo.Tag
+        WHERE Slug IN <foreach collection="slugs" item="s" open="(" separator="," close=")">#{s}</foreach>
+    </select>
+
+    <!-- flushCache: read again after a failed insert in the same transaction, never from the session cache -->
+    <select id="findByNameOrSlug" resultType="com.novelle.model.Tag" flushCache="true">
+        SELECT TOP (1) TagId, Name, Slug, UsageCount
+        FROM dbo.Tag
+        WHERE Slug = #{slug} OR Name = #{name}
+        ORDER BY CASE WHEN Slug = #{slug} THEN 0 ELSE 1 END
+    </select>
+
+    <insert id="insert" parameterType="com.novelle.model.Tag"
+            useGeneratedKeys="true" keyProperty="tagId" keyColumn="TagId">
+        INSERT dbo.Tag (Name, Slug) VALUES (#{name}, #{slug})
+    </insert>
+
+    <select id="findStoryTagIds" resultType="int">
+        SELECT TagId FROM dbo.StoryTag WHERE StoryId = #{storyId}
+    </select>
+
+    <insert id="insertStoryTags">
+        INSERT dbo.StoryTag (StoryId, TagId)
+        VALUES <foreach collection="tagIds" item="t" separator=",">(#{storyId}, #{t})</foreach>
+    </insert>
+
+    <delete id="deleteStoryTags">
+        DELETE dbo.StoryTag
+        WHERE StoryId = #{storyId}
+          AND TagId IN <foreach collection="tagIds" item="t" open="(" separator="," close=")">#{t}</foreach>
+    </delete>
+
+    <update id="adjustUsage">
+        UPDATE dbo.Tag
+        SET UsageCount = UsageCount + #{delta}
+        WHERE TagId IN <foreach collection="tagIds" item="t" open="(" separator="," close=")">#{t}</foreach>
+    </update>
+</mapper>
