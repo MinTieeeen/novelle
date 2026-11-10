@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { keepOpenOnToast } from "@/lib/overlay"
 import { cn } from "@/lib/utils"
 import { XIcon } from "lucide-react"
 import { Dialog as SheetPrimitive } from "radix-ui"
@@ -71,6 +72,8 @@ function SheetContent({
           className
         )}
         {...props}
+        // A click on a toast is not a click outside: it must not close the dialog/sheet.
+        onInteractOutside={keepOpenOnToast(props.onInteractOutside)}
       >
         {children}
         {showCloseButton && (

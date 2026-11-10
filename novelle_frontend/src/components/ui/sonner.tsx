@@ -11,7 +11,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme="light"
       position="bottom-right"
       closeButton
-      className="toaster group"
+      // A modal Dialog/Sheet sets pointer-events:none on <body>; without this the toast inherits it and a
+      // click on its close button falls through to the dialog overlay and closes the dialog.
+      className="toaster group pointer-events-auto"
       icons={{
         success: <CircleCheckIcon className="size-5 text-success" strokeWidth={1.75} />,
         info: <InfoIcon className="size-5 text-primary" strokeWidth={1.75} />,
@@ -21,10 +23,12 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }}
       toastOptions={{
         classNames: {
-          toast: "!rounded-lg !border-border !bg-card !py-3.5 !pr-12 !pl-4 !text-foreground !shadow-raise font-sans",
-          // Toast board: close button on the right, vertically centred, 32px, muted.
+          toast:
+            "!pointer-events-auto !rounded-lg !border-border !bg-card !py-3.5 !pr-12 !pl-4 !text-foreground !shadow-raise font-sans",
+          // Toast board: close button on the right, vertically centred, 32px, muted. Sonner positions it
+          // with `transform`; reset it so only our `translate` applies.
           closeButton:
-            "!top-1/2 !right-2 !left-auto !size-8 !-translate-y-1/2 !translate-x-0 !rounded-md !border-0 !bg-transparent !text-muted-foreground hover:!bg-secondary hover:!text-foreground [&_svg]:!size-4",
+            "!pointer-events-auto !top-1/2 !right-2 !left-auto !size-8 !transform-none !-translate-y-1/2 !translate-x-0 !rounded-md !border-0 !bg-transparent !text-muted-foreground hover:!bg-secondary hover:!text-foreground [&_svg]:!size-4",
           title: "!text-label !font-normal",
           description: "!text-small !text-muted-foreground",
           actionButton: "!h-8 !rounded-md !bg-accent !px-2.5 !text-small !font-semibold !text-accent-foreground",
