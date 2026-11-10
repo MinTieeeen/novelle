@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.StatsMapper">
+
+    <!-- ===================== S1 overview ===================== -->
+
+    <!-- aggregate over IX_User_Role_Status (covering: both grouped columns are its keys) -->
+    <select id="usersByRoleStatus" resultType="com.novelle.model.StatsRows$RoleStatusCount">
+        SELECT Role, Status, COUNT(*) AS Total
+        FROM dbo.[User]
+        GROUP BY Role, Status
+    </select>
+
+    <select id="storiesByStatus" resultType="com.novelle.model.StatsRows$StoryStatusCount">
+        SELECT PublishStatus, COUNT(*) AS Total
+        FROM dbo.Story
+        WHERE IsDeleted = 0
+        GROUP BY PublishStatus
+    </select>
+
+    <!-- one row of totals: chapters of stories that are not deleted, words / views from the derived columns -->
+    <select id="contentTotals" resultType="com.novelle.model.StatsRows$ContentTotals">
+        SELECT
+            (SELECT COUNT(*) FROM dbo.Chapter c JOIN dbo.Story s ON s.StoryId = c.StoryId
+             WHERE c.IsDeleted = 0 AND s.IsDeleted = 0 AND c.Status = 'PUBLISHED')     AS PublishedChapters,
+            (SELECT COUNT(*) FROM dbo.Chapter c JOIN dbo.Story s ON s.StoryId = c.StoryId
+             WHERE c.IsDeleted = 0 AND s.IsDeleted = 0)                               AS TotalChapters,
+            (SELECT COALESCE(SUM(WordCount), 0) FROM dbo.Story WHERE IsDeleted = 0)   AS TotalWords,
+            (SELECT COALESCE(SUM(ViewCount), 0) FROM dbo.Story WHERE IsDeleted = 0)   AS TotalViews,
+            (SELECT COUNT(*) FROM dbo.Rating)                                         AS TotalRatings
+    </select>
+
+    <!-- ===================== S2 views over time ===================== -->
+
+    <sql id="period">
+        <choose>
+            <when test="monthly">DATEFROMPARTS(YEAR(d.ViewDate), MONTH(d.ViewDate), 1)</when>
+            <otherwise>d.ViewDate</otherwise>
+        </choose>
+    </sql>
+
+    <!-- aggregate on IX_StoryViewDaily_Date (ViewDate) INCLUDE (Views): a range seek, no join needed -->
+    <select id="viewSeries" resultType="com.novelle.model.ViewPoint">
+        SELECT <include refid="period"/> AS Period, SUM(CAST(d.Views AS BIGINT)) AS Views
+        FROM dbo.StoryViewDaily d
+        WHERE d.ViewDate BETWEEN #{from} AND #{to}
+        GROUP BY <include refid="period"/>
+        ORDER BY Period
+    </select>
+
+    <!-- ===================== S3 genres ===================== -->
+
+    <!--
+      join + aggregate: Genre ⟕ (StoryGenre ⋈ vw_PublicStory). A story with three genres counts in each of them.
+      The inner join sits inside the LEFT JOIN so genres without a public story stay with 0 (IX_StoryGenre_Genre).
+    -->
+    <select id="genreStats" resultType="com.novelle.model.StatsRows$GenreStat">
+        SELECT g.GenreId, g.Name, g.Slug,
+               COUNT(s.StoryId)                        AS StoryCount,
+               COALESCE(SUM(s.ViewCount), 0)           AS TotalViews
+        FROM dbo.Genre g
+        LEFT JOIN (dbo.StoryGenre sg
+                   JOIN dbo.vw_PublicStory s ON s.StoryId = sg.StoryId)
+               ON sg.GenreId = g.GenreId
+        GROUP BY g.GenreId, g.Name, g.Slug, g.SortOrder
+        ORDER BY StoryCount DESC, g.SortOrder, g.GenreId
+    </select>
+
+    <!-- ===================== S4 new users ===================== -->
+
+    <!-- aggregate per (local month, role); the month is computed once in a derived table -->
+    <select id="newUsersByMonth" resultType="com.novelle.model.StatsRows$MonthRoleCount">
+        SELECT x.Month, x.Role, COUNT(*) AS Total
+        FROM (SELECT u.Role,
+                     DATEFROMPARTS(YEAR(DATEADD(MINUTE, #{offsetMinutes}, u.CreatedAt)),
+                                   MONTH(DATEADD(MINUTE, #{offsetMinutes}, u.CreatedAt)), 1) AS Month
+              FROM dbo.[User] u
+              WHERE u.CreatedAt &gt;= #{sinceUtc}) x
+        GROUP BY x.Month, x.Role
+        ORDER BY x.Month, x.Role
+    </select>
+
+    <!-- ===================== S5 top authors ===================== -->
+
+    <!-- views per author, the inner aggregate shared by both statements below -->
+    <sql id="viewsPerAuthor">
+        SELECT SUM(ViewCount) AS Total FROM dbo.Story WHERE IsDeleted = 0 GROUP BY AuthorId
+    </sql>
+
+    <select id="averageAuthorViews" resultType="java.math.BigDecimal">
+        SELECT CAST(AVG(CAST(t.Total AS DECIMAL(20,2))) AS DECIMAL(20,2))
+        FROM (<include refid="viewsPerAuthor"/>) t
+    </select>
+
+    <!--
+      GROUP BY + HAVING with a subquery: an author qualifies when the sum of the views of their stories is above
+      the average of that sum over all authors (the requirement "subquery" + "aggregate" of the assignment).
+    -->
+    <select id="topAuthors" resultType="com.novelle.model.StatsRows$TopAuthor">
+        SELECT TOP (#{limit})
+               a.UserId AS AuthorId, a.PenName, a.IsVerified, a.FollowerCount,
+               COUNT(*) AS StoryCount, SUM(s.ViewCount) AS TotalViews
+        FROM dbo.Story s
+        JOIN dbo.Author a ON a.UserId = s.AuthorId
+        WHERE s.IsDeleted = 0
+        GROUP BY a.UserId, a.PenName, a.IsVerified, a.FollowerCount
+        HAVING SUM(s.ViewCount) &gt; (SELECT AVG(CAST(t.Total AS DECIMAL(20,2)))
+                                     FROM (<include refid="viewsPerAuthor"/>) t)
+        ORDER BY TotalViews DESC, a.UserId
+    </select>
+</mapper>
