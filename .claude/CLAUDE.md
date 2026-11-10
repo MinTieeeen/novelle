@@ -35,7 +35,7 @@ Specification (outside this repo, in `../docs/`): `data-dictionary.md` (tables, 
 
 Every feature module goes: **scope (confirmed) → plan → spec doc `../docs/module-<name>.md` (Vietnamese) → code phase by phase → user reviews the code → unit + integration tests → report and docs sync**. The user approves each step; never test against the shared RDS/Redis before the code review. Details, spec template and report format: [.claude/rules/module-workflow.md](.claude/rules/module-workflow.md).
 
-Path-scoped rules live in [.claude/rules/](.claude/rules/) (backend Java, MyBatis, testing, database scripts); the part guides say when to read each one.
+Path-scoped rules live in [.claude/rules/](.claude/rules/) (backend Java, MyBatis, testing, database scripts; frontend workflow, React, UI, testing); the part guides say when to read each one.
 
 ## Infrastructure
 
@@ -59,7 +59,7 @@ novelle/
 ├─ docker-compose.yml   redis (+ lab image, profile "lab")
 ├─ docker/              lab Dockerfile, docker README
 ├─ novelle_backend/     Spring Boot API, database/ SQL scripts, scripts/ runners
-├─ novelle_frontend/    React SPA (README only so far)
+├─ novelle_frontend/    React SPA (foundation done; modules per docs/frontend-roadmap.md)
 └─ category_lab/        DBMS Lab (Python)
 ```
 

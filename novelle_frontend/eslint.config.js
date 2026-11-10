@@ -23,6 +23,9 @@ export default tseslint.config(
     },
   },
   { files: ['src/api/**'], rules: { 'no-restricted-imports': 'off' } },
+  // Playwright fixtures call `use()`, which is not a React hook.
+  { files: ['e2e/**'], rules: { 'react-hooks/rules-of-hooks': 'off' } },
+  { files: ['scripts/**/*.mjs'], languageOptions: { globals: globals.node } },
   // shadcn files export variants next to components; providers export their hook; the router holds lazy pages.
   {
     files: ['src/components/ui/**', 'src/app/**', 'src/auth/AuthProvider.tsx'],

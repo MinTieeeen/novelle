@@ -16,6 +16,8 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       strictPort: true,
+      // Pre-transform the shell so the first page load (and parallel Playwright workers) is fast.
+      warmup: { clientFiles: ['./src/main.tsx', './src/app/router.tsx', './src/layouts/*.tsx'] },
       // Same origin for the SPA and the API, so the SESSION and XSRF-TOKEN cookies work without cross-site settings.
       proxy: {
         [apiBase]: {
@@ -26,6 +28,8 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
+      // Playwright specs live in e2e/ and run with `npm run test:e2e`.
+      include: ['src/**/*.test.{ts,tsx}'],
       globals: true,
       setupFiles: ['./src/test/setup.ts'],
       css: false,

@@ -6,6 +6,10 @@ paths:
 
 # Module workflow
 
+**Frontend modules** (FE1–FE8) follow `frontend-workflow.md`: the same six steps adapted to React (screens
+and boards instead of endpoints, browser verification after every component, mocked Playwright tests).
+The sections below describe the backend version.
+
 Read this before planning or starting any feature module (users, story, reading, library, rating, author request, studio, admin). The user approves each step before the next one starts; never merge two steps silently.
 
 ## 1. Scope

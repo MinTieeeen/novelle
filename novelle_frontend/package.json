@@ -13,7 +13,13 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc -b",
+    "test:e2e": "playwright test",
+    "test:e2e:live": "playwright test --project=live",
+    "test:e2e:ui": "playwright test --ui",
+    "shot": "node scripts/shot.mjs",
+    "check": "tsc -b && eslint . && vitest run"
   },
   "dependencies": {
     "@hookform/resolvers": "^7.0.5",

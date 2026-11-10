@@ -181,7 +181,13 @@ Log in with a seeded account (`reader01`, `reader02`, `author01` or `admin`) usi
 | `npm run lint` | Runs ESLint |
 | `npm run format` | Runs Prettier |
 | `npm run test` | Runs Vitest unit and component tests |
+| `npm run check` | `tsc -b` + ESLint + Vitest in one go |
+| `npm run test:e2e` | Runs Playwright (`e2e/`) on the installed Edge, desktop and mobile, with every `/api` call mocked |
+| `npm run test:e2e:live` | Runs the `@live` Playwright specs against the real backend (credentials in `.env.e2e.local`) |
+| `npm run shot -- <route>` | Screenshots a route of the dev server into `tmp/shots/` (width, theme, role, mock file options) |
 | `npx shadcn@latest add <component>` | Adds a shadcn/ui component to `src/components/ui/` |
+
+Module order and scope: [`../../docs/frontend-roadmap.md`](../../docs/frontend-roadmap.md).
 
 ---
 
