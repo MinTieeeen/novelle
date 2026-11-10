@@ -114,6 +114,7 @@ app:
       home: ${CACHE_HOME_TTL:2m}
       story: ${CACHE_STORY_TTL:10m}
       chapter: ${CACHE_CHAPTER_TTL:30m}
+      stats: ${CACHE_STATS_TTL:5m}
   # View counting (G6): Redis counters per Vietnam calendar day, flushed to SQL Server by sp_FlushViews.
   views:
     key-prefix: ${VIEWS_KEY_PREFIX:views:}

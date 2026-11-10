@@ -85,8 +85,8 @@ novelle_backend/
    │  │     ├─ cache/                CacheService (cache-aside) and CacheKeys
    │  │     ├─ ratelimit/            @RateLimited annotation and Redis-backed interceptor
    │  │     ├─ views/                ViewCounterService (Redis INCR) and ViewFlushJob (sp_FlushViews)
-   │  │     ├─ jobs/                 ScheduledPublishJob (sp_PublishScheduled)
-   │  │     └─ html/                 HtmlSanitizer (jsoup allowlist)
+   │  │     ├─ jobs/                 ScheduledPublisher + ScheduledPublishJob (sp_PublishScheduled)
+   │  │     └─ html/                 HtmlSanitizer (jsoup allowlist), WordCounter, SlugGenerator
    │  └─ resources/
    │     ├─ application.yml          Shared settings, including MyBatis configuration
    │     ├─ application-local.yml    RDS + Redis from docker compose
@@ -299,17 +299,21 @@ Spec: [`../../docs/module-reading.md`](../../docs/module-reading.md). `GET /api/
 2. The batch goes to `sp_FlushViews` as the table-valued parameter `dbo.ViewDeltaTable` (`ViewDeltaBatchTypeHandler` builds a `SQLServerDataTable` and calls `setStructured`). The procedure adds the values to `Story.ViewCount`, `Chapter.ViewCount` and `StoryViewDaily` in one transaction.
 3. If the call fails, `views-restore.lua` adds the counts back (`INCRBY` + `SADD`). If Redis itself is lost, at most about 60 seconds of views are lost; this is the documented RPO for this data.
 
-### 5.5 Studio: writing and publishing chapters (F8–F9)
+### 5.5 Studio: writing and publishing chapters (F8–F10)
 
-1. **Ownership:** every studio service method checks that the current user is an `AUTHOR` and owns the story (RB1, RB2); otherwise it returns 403.
+Spec: [`../../docs/module-studio.md`](../../docs/module-studio.md).
+
+1. **Ownership:** `/api/studio/**` is AUTHOR only, and every query also filters `AuthorId = @me AND IsDeleted = 0` (`StudioOwnership`, RB1, RB2). A story, volume or chapter of someone else returns **404**, so its existence is not revealed.
 2. **Autosave:** the editor calls `PUT /api/studio/chapters/{id}/draft` every few seconds. The draft is stored only in the Redis hash `draft:{userId}:{chapterId}` (TTL 7 days), so typing does not create database writes.
-3. **Save:** `PUT /api/studio/chapters/{id}` sends the content together with the `rowVersion` the client last loaded.
+3. **Save:** `PUT /api/studio/chapters/{id}` sends the content together with the `version` the client last loaded. `version` is `UpdatedAt`, not `RowVer`: `sp_FlushViews` and the follow / rating triggers change `RowVer` every minute, which would give false conflicts.
    - The HTML is sanitized with jsoup and the word count is computed.
-   - `ChapterMapper.updateContent` runs `UPDATE … WHERE RowVer = #{rowVersion}`. If it returns 0 rows, the chapter was changed elsewhere and the API returns **409 Conflict**.
-   - The `trg_Chapter_Revision` trigger stores the previous version in `ChapterRevision`, and the Redis draft is deleted.
-4. **Publish now:** `POST /api/studio/chapters/{id}/publish` calls `sp_PublishChapter` through a `CALLABLE` statement. In one transaction it changes the chapter status and updates `Story.ChapterCount`, `WordCount`, `LastChapterAt` and, on the first publish, `PublishedAt` (RB9). The service then evicts the story and home caches.
-5. **Schedule:** the chapter is saved as `SCHEDULED` with `ScheduledAt`. `ScheduledPublishJob` calls `sp_PublishScheduled` every minute (RB11), because RDS Express has no SQL Server Agent.
-6. **Revisions:** `GET .../revisions` lists previous versions; restoring one saves it as a new version, since `ChapterRevision` is append-only (RB10).
+   - In one `@Transactional` method (one connection): `sp_set_session_context 'user_id'`, then `StudioChapterMapper.updateContent` runs `UPDATE … WHERE UpdatedAt = #{version}`. 0 rows → **409 `STALE_DATA`**.
+   - The `trg_Chapter_Revision` trigger stores the previous version in `ChapterRevision` (10 newest kept), and the Redis draft is deleted. A published chapter also runs `sp_RecalcStoryStats` and evicts its caches.
+4. **Publish now:** `POST /api/studio/chapters/{id}/publish` calls `sp_PublishChapter` through a `CALLABLE` statement. In one transaction it changes the chapter status, clears `ScheduledAt` and updates `Story.ChapterCount`, `WordCount`, `LastChapterAt` and, on the first publish, `PublishedAt` (RB9). The service then evicts the story and home caches. A story can be published (`DRAFT → PUBLISHED`) only once it has a published chapter; a story `HIDDEN` by an admin keeps its status.
+5. **Schedule:** the chapter is saved as `SCHEDULED` with `ScheduledAt`. `ScheduledPublishJob` calls `sp_PublishScheduled` every `STUDIO_PUBLISH_INTERVAL` (RB11), because RDS Express has no SQL Server Agent; the procedure reads due rows `WITH (UPDLOCK, READPAST)`, so instances never wait on each other.
+6. **Numbering:** new chapters and volumes get `MAX + 1` read `WITH (UPDLOCK, HOLDLOCK)` inside the `INSERT … SELECT`, so two concurrent inserts never collide on the unique index.
+7. **Revisions:** `GET .../revisions` lists previous versions; restoring one goes through the normal save, so the replaced text becomes a new revision, since `ChapterRevision` is append-only (RB10).
+8. **Dashboard:** `GET /api/studio/dashboard[/views|/stories|/followers]`: `vw_AuthorStats`, views per Vietnam day / month from `StoryViewDaily` (missing periods filled with 0), per-story stats with an "above my average rating" subquery, newest followers.
 
 ### 5.6 Becoming an author (F7, F11)
 

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.AdminUserMapper">
+
+    <!-- alias u = dbo.[User]; never PasswordHash -->
+    <sql id="accountColumns">
+        u.UserId, u.Username, u.Email, u.DisplayName, u.AvatarUrl, u.Role, u.Status,
+        u.CreatedAt, u.LastLoginAt, u.BannedAt
+    </sql>
+
+    <!--
+      many conditions, each optional; role / status use IX_User_Role_Status. The LIKE pattern comes escaped from
+      the service ('_' is common in usernames and would otherwise match any character).
+    -->
+    <sql id="userWhere">
+        <where>
+            <if test="c.role != null">AND u.Role = #{c.role}</if>
+            <if test="c.status != null">AND u.Status = #{c.status}</if>
+            <if test="c.likePattern != null">
+                AND (u.Username LIKE #{c.likePattern} OR u.Email LIKE #{c.likePattern}
+                     OR u.DisplayName LIKE #{c.likePattern})
+            </if>
+            <if test="c.createdFrom != null">AND u.CreatedAt &gt;= #{c.createdFrom}</if>
+            <if test="c.createdTo != null">AND u.CreatedAt &lt; #{c.createdTo}</if>
+        </where>
+    </sql>
+
+    <select id="pageUsers" resultType="com.novelle.model.AdminUser">
+        SELECT <include refid="accountColumns"/>
+        FROM dbo.[User] u
+        <include refid="userWhere"/>
+        ORDER BY u.CreatedAt DESC, u.UserId DESC
+        OFFSET #{offset} ROWS FETCH NEXT #{size} ROWS ONLY
+    </select>
+
+    <select id="countUsers" resultType="long">
+        SELECT COUNT(*) FROM dbo.[User] u
+        <include refid="userWhere"/>
+    </select>
+
+    <resultMap id="AdminUserDetailMap" type="com.novelle.model.AdminUser" autoMapping="true">
+        <id property="userId" column="UserId"/>
+        <association property="author" javaType="com.novelle.model.AdminUser$AuthorPart"
+                     columnPrefix="Author_" notNullColumn="PenName" autoMapping="true"/>
+    </resultMap>
+
+    <!--
+      join User ⟕ Author (profile, only for an AUTHOR) ⟕ User (the admin who banned);
+      subquery: stories of the author that are not deleted.
+    -->
+    <select id="findUser" resultMap="AdminUserDetailMap" flushCache="true">
+        SELECT <include refid="accountColumns"/>, u.BanReason,
+               u.BannedBy      AS BannedById,
+               b.Username      AS BannedByUsername,
+               a.PenName       AS Author_PenName,
+               a.IsVerified    AS Author_IsVerified,
+               a.FollowerCount AS Author_FollowerCount,
+               (SELECT COUNT(*) FROM dbo.Story s WHERE s.AuthorId = a.UserId AND s.IsDeleted = 0) AS Author_StoryCount
+        FROM dbo.[User] u
+        LEFT JOIN dbo.Author a  ON a.UserId = u.UserId
+        LEFT JOIN dbo.[User] b  ON b.UserId = u.BannedBy
+        WHERE u.UserId = #{userId}
+    </select>
+
+    <!-- aggregate -->
+    <select id="countRequestsByStatus" resultType="com.novelle.model.StatusCount">
+        SELECT Status, COUNT(*) AS Total
+        FROM dbo.AuthorRequest
+        WHERE UserId = #{userId}
+        GROUP BY Status
+    </select>
+
+    <!--
+      The preconditions are in the WHERE (D7): two admins banning the same user at once cannot both succeed,
+      and no request can ever ban an administrator (D1, RB16).
+    -->
+    <update id="ban">
+        UPDATE dbo.[User]
+        SET Status = 'BANNED', BanReason = #{reason}, BannedBy = #{adminId}, BannedAt = SYSUTCDATETIME(),
+            UpdatedAt = SYSUTCDATETIME()
+        WHERE UserId = #{userId} AND Status = 'ACTIVE' AND Role &lt;&gt; 'ADMIN'
+    </update>
+
+    <update id="unban">
+        UPDATE dbo.[User]
+        SET Status = 'ACTIVE', BanReason = NULL, BannedBy = NULL, BannedAt = NULL, UpdatedAt = SYSUTCDATETIME()
+        WHERE UserId = #{userId} AND Status = 'BANNED'
+    </update>
+
+    <!-- unlike registration (AuthMapper.insertUser) no LastLoginAt: the new administrator is not logged in -->
+    <insert id="insertAdmin" parameterType="com.novelle.model.NewUser"
+            useGeneratedKeys="true" keyProperty="userId" keyColumn="UserId">
+        INSERT INTO dbo.[User] (Username, Email, PasswordHash, DisplayName, Role)
+        VALUES (#{username}, #{email}, #{passwordHash}, #{displayName}, 'ADMIN')
+    </insert>
+
+    <select id="findVerified" resultType="java.lang.Boolean" flushCache="true">
+        SELECT IsVerified FROM dbo.Author WHERE UserId = #{authorId}
+    </select>
+
+    <update id="setVerified">
+        UPDATE dbo.Author SET IsVerified = #{isVerified} WHERE UserId = #{authorId}
+    </update>
+</mapper>

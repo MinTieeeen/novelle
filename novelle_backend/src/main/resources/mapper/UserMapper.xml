@@ -10,10 +10,19 @@
     </resultMap>
 
     <sql id="userWithAuthor">
-        SELECT u.UserId, u.Username, u.Email, u.DisplayName, u.AvatarUrl, u.Bio, u.Role, u.Status,
-               u.CreatedAt, u.LastLoginAt, u.RowVer AS RowVersion,
-               a.UserId        AS Author_AuthorId,
-               a.PenName       AS Author_PenName,
+        SELECT u.UserId
+               , u.Username
+               , u.Email
+               , u.DisplayName
+               , u.AvatarUrl
+               , u.Bio
+               , u.Role
+               , u.Status
+               , u.CreatedAt
+               , u.LastLoginAt
+               , u.RowVer        AS RowVersion
+               , a.UserId        AS Author_AuthorId
+               , a.PenName       AS Author_PenName,
                a.Bio           AS Author_Bio,
                a.IsVerified    AS Author_IsVerified,
                a.FollowerCount AS Author_FollowerCount
@@ -39,16 +48,20 @@
             <if test="bioSet">Bio = #{bio},</if>
             UpdatedAt = SYSUTCDATETIME()
         </set>
-        WHERE UserId = #{userId} AND RowVer = #{rowVersion}
+        WHERE UserId = #{userId} 
+              AND RowVer = #{rowVersion}
     </update>
 
     <select id="findPasswordHash" resultType="string">
-        SELECT PasswordHash FROM dbo.[User] WHERE UserId = #{userId}
+        SELECT PasswordHash 
+          FROM dbo.[User] 
+         WHERE UserId = #{userId}
     </select>
 
     <update id="updatePasswordHash">
         UPDATE dbo.[User]
-        SET PasswordHash = #{passwordHash}, UpdatedAt = SYSUTCDATETIME()
-        WHERE UserId = #{userId}
+           SET PasswordHash = #{passwordHash}
+               , UpdatedAt = SYSUTCDATETIME()
+         WHERE UserId = #{userId}
     </update>
 </mapper>

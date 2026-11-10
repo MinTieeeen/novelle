@@ -11,7 +11,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param home    {@link CacheKeys#HOME}
  * @param story   {@link CacheKeys#story(int)}
  * @param chapter {@link CacheKeys#chapter(long)}
+ * @param stats   {@link CacheKeys#stats(String)} (admin statistics, never evicted)
  */
 @ConfigurationProperties(prefix = "app.cache.ttl")
-public record CacheTtlProperties(Duration genre, Duration home, Duration story, Duration chapter) {
+public record CacheTtlProperties(Duration genre, Duration home, Duration story, Duration chapter,
+        Duration stats) {
 }
