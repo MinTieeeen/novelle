@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/brand/novelle-mark.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="light dark" />
+    <meta name="color-scheme" content="light" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -12,14 +12,6 @@
       rel="stylesheet"
     />
     <title>Novelle</title>
-    <script>
-      // Apply the saved site theme before first paint (same key as ThemeProvider) to avoid a flash.
-      try {
-        var t = localStorage.getItem('novelle-theme') || 'system';
-        var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-        if (dark) document.documentElement.classList.add('dark');
-      } catch (e) {}
-    </script>
   </head>
   <body>
     <div id="root"></div>

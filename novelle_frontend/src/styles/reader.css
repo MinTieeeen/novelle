@@ -1,5 +1,6 @@
 /*
- * Chapter reading surface. The three reading themes are fixed and do not follow the site theme (.dark).
+ * Chapter reading surface. The three reading backgrounds (paper, sepia, night) are a reader setting; the
+ * site itself is light-only.
  * useReaderSettings writes data-theme, --reader-size and --reader-leading on the .reader element.
  */
 .reader {

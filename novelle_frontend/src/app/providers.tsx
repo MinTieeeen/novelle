@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import { setHttpErrorHandlers } from '@/api/http';
 import { queryKeys } from '@/api/queryKeys';
 import { queryClient } from '@/app/queryClient';
-import { ThemeProvider } from '@/app/ThemeProvider';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -42,14 +41,12 @@ export function AppProviders({ children }: { children: ReactNode }) {
   useHttpErrorHandlers();
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <AuthProvider>
-          <TooltipProvider delayDuration={300}>
-            {children}
-            <Toaster />
-          </TooltipProvider>
-        </AuthProvider>
-      </ThemeProvider>
+      <AuthProvider>
+        <TooltipProvider delayDuration={300}>
+          {children}
+          <Toaster />
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

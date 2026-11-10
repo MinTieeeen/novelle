@@ -1,7 +1,6 @@
-import { BookMarked, LogOut, Monitor, Moon, PenTool, Shield, Sun, UserRound } from 'lucide-react';
+import { BookMarked, LogOut, PenTool, Shield, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useTheme, type Theme } from '@/app/ThemeProvider';
 import { useAuth } from '@/auth/AuthProvider';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -9,23 +8,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { initials } from '@/utils/format';
 
-const THEMES: { value: Theme; label: string; icon: typeof Sun }[] = [
-  { value: 'light', label: 'Sáng', icon: Sun },
-  { value: 'dark', label: 'Tối', icon: Moon },
-  { value: 'system', label: 'Theo hệ thống', icon: Monitor },
-];
-
-/** Avatar button that opens the account menu: profile, library, role areas, site theme, log out. */
+/** Avatar button that opens the account menu: profile, library, role areas, log out. */
 export function UserMenu() {
   const { user, logout } = useAuth();
-  const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   if (!user) return null;
 
@@ -74,15 +64,6 @@ export function UserMenu() {
             <Shield /> Quản trị
           </DropdownMenuItem>
         )}
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-caption font-normal text-muted-foreground">Giao diện</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={theme} onValueChange={(v) => setTheme(v as Theme)}>
-          {THEMES.map(({ value, label, icon: Icon }) => (
-            <DropdownMenuRadioItem key={value} value={value}>
-              <Icon /> {label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={handleLogout}>
           <LogOut /> Đăng xuất

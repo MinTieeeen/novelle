@@ -39,7 +39,7 @@ All data comes from the Novelle REST API ([`../novelle_backend`](../novelle_back
 | UI framework | React 18 |
 | Build tool and dev server | Vite |
 | Component library | shadcn/ui (components copied into `src/components/ui/`, built on Radix UI primitives) |
-| Styling | Tailwind CSS 4 (`@tailwindcss/vite`); light and dark theme through CSS variables and the `.dark` class |
+| Styling | Tailwind CSS 4 (`@tailwindcss/vite`); a single light theme through CSS variables (no dark mode) |
 | Icons | lucide-react |
 | Toasts | Sonner (shadcn `Toaster`) |
 | Forms | React Hook Form + Zod, through the shadcn `Form` components |
@@ -73,9 +73,8 @@ novelle_frontend/
    ├─ App.tsx                    Wraps the router with the global providers
    ├─ app/
    │  ├─ router.tsx              Route table, layouts and role guards
-   │  ├─ providers.tsx           QueryClientProvider, ThemeProvider, AuthProvider, TooltipProvider, <Toaster/>
+   │  ├─ providers.tsx           QueryClientProvider, AuthProvider, TooltipProvider, <Toaster/>
    │  ├─ queryClient.ts          TanStack Query defaults (staleTime, retry policy)
-   │  └─ ThemeProvider.tsx       Light / dark / system theme: toggles the `.dark` class on <html>, kept in localStorage
    ├─ api/
    │  ├─ http.ts                 Axios instance: baseURL, withCredentials, XSRF, error interceptor
    │  ├─ queryKeys.ts            Central list of query keys used for caching and invalidation
@@ -121,7 +120,7 @@ novelle_frontend/
    │  └─ utils.ts                `cn()` helper (clsx + tailwind-merge) used by shadcn/ui components
    ├─ utils/                     Formatting (numbers, dates), sanitizeHtml, error helpers
    └─ styles/
-      ├─ globals.css             Tailwind import, theme CSS variables (`:root` and `.dark`), base layer
+      ├─ globals.css             Tailwind import, theme CSS variables (`:root`, light only), base layer
       └─ reader.css              Reader typography for chapter content
 ```
 
@@ -129,7 +128,7 @@ novelle_frontend/
 
 | Part | Responsibility |
 |---|---|
-| `app/` | Composes the application: providers, theme, and the route tree with the layout and role guard for each section. |
+| `app/` | Composes the application: providers and the route tree with the layout and role guard for each section. |
 | `api/` | The only place that talks to the backend. Each file exports typed functions such as `getStory(slug)` and `publishChapter(id)`. Components never call Axios directly. |
 | `auth/` | Holds the logged-in user (`id`, `displayName`, `role`) and exposes `useAuth()`. `RequireRole` protects the Studio (`AUTHOR`) and Admin (`ADMIN`) routes. |
 | `layouts/` | Page frames for the three sections. Each renders an `<Outlet/>` for its child routes. |
@@ -140,7 +139,7 @@ novelle_frontend/
 | `types/` | Shared request and response types, so the API layer and pages agree on shapes. |
 | `lib/` | The `cn()` class-name helper that shadcn/ui expects at `@/lib/utils`. |
 | `utils/` | Pure helpers with no React dependency. |
-| `styles/` | Tailwind entry point and theme tokens. Colours, radius and fonts are CSS variables, so the light and dark themes are changed in one place. |
+| `styles/` | Tailwind entry point and theme tokens. Colours, radius and fonts are CSS variables, so the (light) theme is changed in one place. |
 
 ---
 
@@ -184,7 +183,7 @@ Log in with a seeded account (`reader01`, `reader02`, `author01` or `admin`) usi
 | `npm run check` | `tsc -b` + ESLint + Vitest in one go |
 | `npm run test:e2e` | Runs Playwright (`e2e/`) on the installed Edge, desktop and mobile, with every `/api` call mocked |
 | `npm run test:e2e:live` | Runs the `@live` Playwright specs against the real backend (credentials in `.env.e2e.local`) |
-| `npm run shot -- <route>` | Screenshots a route of the dev server into `tmp/shots/` (width, theme, role, mock file options) |
+| `npm run shot -- <route>` | Screenshots a route of the dev server into `tmp/shots/` (width, role, mock file options) |
 | `npx shadcn@latest add <component>` | Adds a shadcn/ui component to `src/components/ui/` |
 
 Module order and scope: [`../../docs/frontend-roadmap.md`](../../docs/frontend-roadmap.md).
@@ -249,7 +248,7 @@ Navigation also adapts to the role: the "Studio" link appears only for authors, 
   2. `useReadingProgress` tracks the scroll percentage and sends `PUT /api/reading-progress/{storyId}` with a debounce, and once more when the user leaves the page.
   3. Previous and next buttons use the chapter list already cached for the story.
   4. Counting views is handled by the backend when the chapter is fetched; the frontend does nothing extra.
-- **Reader settings:** `ReaderSettingsDrawer` is a shadcn `Sheet` with font size, line height and reading theme (light, sepia, dark). The reading theme only styles the chapter area; the site theme is controlled separately by `ThemeProvider`.
+- **Reader settings:** `ReaderSettingsDrawer` is a shadcn `Sheet` with font size, line height and reading background (paper, sepia, night). The reading background only styles the chapter area; the site theme is controlled separately by `ThemeProvider`.
 - **Library:** `Tabs` for continue reading, followed stories, followed authors, and reading lists. Reading lists support create, rename, delete, add and remove items, and reorder.
 
 ### 5.5 Becoming an author (F7)

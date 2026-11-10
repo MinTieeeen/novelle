@@ -4,13 +4,12 @@
  * integrated browser is not reachable). Output: tmp/shots/<name>.png
  *
  *   npm run shot -- /dev/design-system
- *   npm run shot -- /studio --role author --theme dark --width 1440 --name studio-dark
+ *   npm run shot -- /studio --role author --width 1440 --name studio-author
  *   npm run shot -- /search --mock e2e/mocks/search.json --width 390 --full
  *
  * Options
  *   --width <px>      viewport width (default 1440; use 390 for mobile)
  *   --height <px>     viewport height (default 900)
- *   --theme light|dark  site theme stored in localStorage before load (default light)
  *   --role guest|reader|author|admin  mocks GET /api/me (default: not mocked)
  *   --mock <file>     JSON { "GET /stories": {...body}, "GET /home": { "status": 500, "body": {...} } }
  *                     keys are "METHOD /path-after-api"; a value with "status" is used as a full response
@@ -36,11 +35,10 @@ const flag = (name) => args.includes(`--${name}`);
 
 const width = Number(opt('width', 1440));
 const height = Number(opt('height', 900));
-const theme = opt('theme', 'light');
 const role = opt('role');
 const mockFile = opt('mock');
 const wait = Number(opt('wait', 300));
-const name = opt('name', (route === '/' ? 'home' : route.slice(1).replace(/[^a-z0-9]+/gi, '-')) + `-${width}-${theme}`);
+const name = opt('name', (route === '/' ? 'home' : route.slice(1).replace(/[^a-z0-9]+/gi, '-')) + `-${width}`);
 const base = process.env.E2E_BASE_URL ?? 'http://localhost:5173';
 
 const ME = {
@@ -60,7 +58,6 @@ if (mockFile) {
 
 const browser = await chromium.launch({ channel: process.env.PW_CHANNEL ?? 'msedge' });
 const page = await browser.newPage({ viewport: { width, height }, locale: 'vi-VN', timezoneId: 'Asia/Ho_Chi_Minh' });
-await page.addInitScript((t) => localStorage.setItem('novelle-theme', t), theme);
 const errors = [];
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 page.on('console', (m) => m.type() === 'error' && errors.push(`console: ${m.text()}`));

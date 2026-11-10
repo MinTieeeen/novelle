@@ -4,7 +4,7 @@ import { afterEach } from 'vitest';
 
 afterEach(() => cleanup());
 
-// jsdom has no matchMedia; ThemeProvider needs it.
+// jsdom has no matchMedia; some Radix/Sonner code reads it.
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>
     ({

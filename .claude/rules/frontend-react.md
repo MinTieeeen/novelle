@@ -76,11 +76,11 @@ through `@/`. A component used by one page only stays next to it until a second 
 ## Config and security
 
 - Only `VITE_*` variables, declared in `src/vite-env.d.ts` and `.env.example`; nothing secret in the bundle.
-- No `localStorage` for auth or personal data; only UI preferences (theme, reader settings, drafts of the
+- No `localStorage` for auth or personal data; only UI preferences (reader settings, drafts of the
   chapter editor are in Redis via the API).
 - Hiding a button is convenience: the backend re-checks roles; still hide actions the role cannot do.
 
 ## Writing files
 
 Use the Write/Edit tools, not shell heredocs (heredocs broke on quotes during setup). After `npx shadcn add`,
-check the generated imports (`@/lib/utils`) and that no extra package (`next-themes`, `cn`) was installed.
+check the generated imports (`@/lib/utils`) that no extra package (`next-themes`, `cn`) was installed, and strip `dark:` classes (light theme only).

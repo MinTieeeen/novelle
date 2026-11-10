@@ -1,17 +1,14 @@
 import { CircleAlertIcon, CircleCheckIcon, InfoIcon, Loader2Icon, TriangleAlertIcon } from "lucide-react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
-import { useTheme } from "@/app/ThemeProvider"
 
 /*
  * Novelle toast: surface-raised card, line border, shadow-raise, radius-lg, bottom-right, close button.
  * Icon colour carries the status (success / critical / warning); the message repeats the button verb.
  */
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { resolvedTheme } = useTheme()
-
   return (
     <Sonner
-      theme={resolvedTheme}
+      theme="light"
       position="bottom-right"
       closeButton
       className="toaster group"

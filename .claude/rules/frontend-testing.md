@@ -55,17 +55,17 @@ Run everything from `novelle_frontend/`. `npm run check` = `tsc -b` + ESLint + V
    the route with `browser_navigate` (or `browser_tab_open`), check structure with `browser_snapshot`
    (`interactiveOnly` for controls), read values with `browser_eval`, exercise interactions with
    `browser_click`/`browser_type`/`browser_press_key`, read `browser_console` for errors, emulate
-   `browser_emulate { width: 390, height: 844, mobile: true }` and `{ colorScheme: 'dark' }`, then
+   `browser_emulate { width: 390, height: 844, mobile: true }`, then
    `browser_screenshot`. Mock data in this browser: use a `/dev/*` preview page, or the real backend for GETs.
-3. **Fallback when it is not reachable**: `npm run shot -- <route> [--width 390] [--theme dark] [--role
+3. **Fallback when it is not reachable**: `npm run shot -- <route> [--width 390] [--role
    reader|author|admin|guest] [--mock e2e/mocks/<file>.json] [--full]` → `tmp/shots/<name>.png`, then Read the
    PNG. The script prints page errors and console errors: treat each as a bug. In Git Bash pass the route
    without the leading slash (`studio`) or rely on the script's MSYS path fix.
 4. Compare with the board side by side (Read the board HTML, or ask the user for a board screenshot when the
    layout is unclear): structure and order, spacing, type sizes, colours/tokens, copy, icons, states.
-   Check widths 1440 and 390 (Studio/Admin: 1440 and 1024), light and dark.
+   Check widths 1440 and 390 (Studio/Admin: 1440 and 1024).
 5. Fix every difference that is not a documented deliberate deviation, re-shoot, and list in the phase
-   report: route × width × theme checked, what was fixed, what still differs and why.
+   report: route × width checked, what was fixed, what still differs and why.
 6. Turn each interaction you checked by hand into a Playwright case when the module reaches the test step.
 
 ## After the run

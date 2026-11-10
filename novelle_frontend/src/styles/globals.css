@@ -1,12 +1,16 @@
 /*
  * Novelle design system: "cham va nghe" (indigo and turmeric).
- * Values mirror the design system tokens.json (claude.ai artifact E8GRZtn61b9Z9tyRMdNytN).
+ * Values mirror the light theme of the design system tokens.json (claude.ai artifact E8GRZtn61b9Z9tyRMdNytN).
  * When a token changes, change it here only: components use the Tailwind names
  * (bg-background, text-muted-foreground, bg-nghe, ...), never hex values.
  */
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+/*
+ * Light theme only. The site has no dark mode: no element ever gets the .dark class, so any `dark:` utility
+ * that a shadcn component brings in stays inert (Tailwind's default would follow the OS setting).
+ */
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -62,58 +66,6 @@
   --shadow-raise-value: 0 1px 2px rgb(31 33 96 / 0.06), 0 6px 20px rgb(31 33 96 / 0.08);
   --shadow-cover-value: 0 2px 4px rgb(31 33 96 / 0.12), 0 10px 22px rgb(31 33 96 / 0.16);
   --shadow-overlay-value: 0 24px 64px rgb(19 20 43 / 0.24);
-}
-
-.dark {
-  --background: #13142b;
-  --foreground: #ecebf5;
-  --card: #1c1e3a;
-  --card-foreground: #ecebf5;
-  --popover: #1c1e3a;
-  --popover-foreground: #ecebf5;
-  --primary: #b6baf7;
-  --primary-foreground: #13142b;
-  --secondary: #0e0f22;
-  --secondary-foreground: #ecebf5;
-  --muted: #0e0f22;
-  --muted-foreground: #a3a5c2;
-  --accent: #262a5c;
-  --accent-foreground: #b6baf7;
-  --destructive: #f2877f;
-  --destructive-foreground: #13142b;
-  --border: #2e3156;
-  --input: #6b70a8;
-  --ring: #f0b23a;
-  --chart-1: #b6baf7;
-  --chart-2: #f0b23a;
-  --chart-3: #6ccb9f;
-  --chart-4: #8f94e8;
-  --chart-5: #f2a766;
-  --sidebar: #1c1e3a;
-  --sidebar-foreground: #ecebf5;
-  --sidebar-primary: #b6baf7;
-  --sidebar-primary-foreground: #13142b;
-  --sidebar-accent: #262a5c;
-  --sidebar-accent-foreground: #b6baf7;
-  --sidebar-border: #2e3156;
-  --sidebar-ring: #f0b23a;
-
-  --cham-hover: #cdd0fa;
-  --link: #b6baf7;
-  --nghe: #f0b23a;
-  --nghe-soft: #3a2e12;
-  --nghe-ink: #f0b23a;
-  --on-nghe: #13142b;
-  --success: #6ccb9f;
-  --success-soft: #16332a;
-  --warning: #f2a766;
-  --warning-soft: #3a2414;
-  --critical-soft: #3d1a1a;
-  --scrim: rgb(0 0 0 / 0.6);
-
-  --shadow-raise-value: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px rgb(0 0 0 / 0.35);
-  --shadow-cover-value: 0 2px 4px rgb(0 0 0 / 0.5), 0 10px 22px rgb(0 0 0 / 0.45);
-  --shadow-overlay-value: 0 24px 64px rgb(0 0 0 / 0.6);
 }
 
 @theme inline {

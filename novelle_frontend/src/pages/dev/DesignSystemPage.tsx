@@ -1,6 +1,5 @@
 import { CircleAlert, Plus, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
-import { useTheme } from '@/app/ThemeProvider';
 import { Logo } from '@/components/brand/Logo';
 import { EmptyState } from '@/components/common/EmptyState';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -35,18 +34,9 @@ const SWATCHES = [
  * Not registered in production builds.
  */
 export default function DesignSystemPage() {
-  const { resolvedTheme, setTheme } = useTheme();
   return (
     <div className="flex flex-col gap-12">
-      <PageHeader
-        title="Novelle design system"
-        description="Chàm và nghệ · bản xem trước token và component"
-        actions={
-          <Button variant="outline" onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
-            Đổi sang theme {resolvedTheme === 'dark' ? 'sáng' : 'tối'}
-          </Button>
-        }
-      />
+      <PageHeader title="Novelle design system" description="Chàm và nghệ · bản xem trước token và component" />
 
       <section className="flex flex-col gap-4">
         <h2 className="text-title-2 font-semibold">Logo</h2>

@@ -9,17 +9,10 @@ interface LogoProps {
 }
 
 /**
- * Novelle logo. The SVGs have fixed colours, so both theme versions are rendered and CSS shows the
- * one matching `.dark`. Never recolour, rotate, stretch or put a shadow on it.
+ * Novelle logo (light theme files, fixed colours). Never recolour, rotate, stretch or put a shadow on it.
  * Heights: header 30px, sidebar 26–28px, login 48–72px.
  */
 export function Logo({ variant = 'wordmark', className, alt = 'Novelle' }: LogoProps) {
-  const base = `/brand/novelle-${variant}`;
   const size = variant === 'wordmark' ? 'h-[30px] w-auto' : 'h-7 w-auto';
-  return (
-    <>
-      <img src={`${base}.svg`} alt={alt} className={cn(size, 'block dark:hidden', className)} />
-      <img src={`${base}-dark.svg`} alt={alt} className={cn(size, 'hidden dark:block', className)} />
-    </>
-  );
+  return <img src={`/brand/novelle-${variant}.svg`} alt={alt} className={cn(size, 'block', className)} />;
 }

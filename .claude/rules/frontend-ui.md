@@ -28,7 +28,9 @@ paths:
 ## Design system rules (artifact `E8GRZtn61b9Z9tyRMdNytN`)
 
 - Colours only through tokens (`styles/globals.css`): never hex, never `bg-[#…]`, never Tailwind palette
-  colours (`bg-blue-500`). Both themes must work; check dark.
+  colours (`bg-blue-500`). **Light theme only**: the site has no dark mode; never add `.dark` tokens,
+  `dark:` classes or a theme switch (remove the `dark:` classes a new shadcn component brings in). The
+  paper / sepia / night backgrounds of the chapter reader are a reading setting, not a site theme.
 - **Nghệ (`nghe`) means "your reading position" only**: logo, Đọc tiếp, current chapter in the TOC, reading
   progress bar, rating stars (and the author Studio pill, as drawn in the header board). It always comes
   with text or a number (2:1 contrast on light).
@@ -54,7 +56,7 @@ paths:
   `Dialog` with a form.
 - Change `components/ui/*` only for design-wide changes and say so in the phase report. Missing shadcn
   part → `npx shadcn@latest add <name>` (then fix imports, see `frontend-react.md`).
-- Every new reusable component gets a preview block (all variants and states, light and dark) on
+- Every new reusable component gets a preview block (all variants and states) on
   `/dev/design-system` or on a `/dev/<domain>` page registered under `devRoutes` in `app/router.tsx`, so it
   can be checked in the browser without the backend.
 

@@ -37,12 +37,12 @@ test('/admin redirects to the dashboard for an admin @desktop-only', async ({ pa
   await expect(page).toHaveURL('/admin/dashboard');
 });
 
-test('site theme follows the saved choice', async ({ page, api: _api }) => {
-  await page.addInitScript(() => localStorage.setItem('novelle-theme', 'dark'));
+test('site stays light when the OS prefers dark', async ({ page, api: _api }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/dev/design-system');
-  await expect(page.locator('html')).toHaveClass(/dark/);
-  await page.getByRole('button', { name: /Đổi sang theme sáng/ }).click();
   await expect(page.locator('html')).not.toHaveClass(/dark/);
+  // --background (surface) of the light theme: #F7F7FA
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(247, 247, 250)');
 });
 
 test('unknown route shows the 404 page', async ({ page, api: _api }) => {

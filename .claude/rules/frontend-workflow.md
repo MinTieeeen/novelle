@@ -56,7 +56,7 @@ Typical phases:
 | a. Data | `types/`, `api/`, `queryKeys`, Zod schemas, mock fixtures in `e2e/fixtures/` | `npm run check` |
 | b. Components | reusable pieces in `components/<domain>/`, each with a preview on `/dev/design-system` (or a `/dev/<domain>` page) in every state | `npm run check` + browser check of each component |
 | c. Pages | pages in `pages/<area>/`, wired to queries/mutations, routes in `app/router.tsx` | `npm run check` + browser check of each screen against its board |
-| d. Polish | responsive (390 / 768 / 1440), dark theme, keyboard, empty/error states, copy | browser check in both themes and widths |
+| d. Polish | responsive (390 / 768 / 1440), keyboard, empty/error states, copy | browser check at every width |
 
 After each phase: `npm run check` (tsc + ESLint + Vitest) must pass, then do the **browser verification
 loop** (`frontend-testing.md` § Browser verification) for everything built in the phase, fix what differs from
@@ -72,7 +72,7 @@ After the user reviewed the code: follow `frontend-testing.md`. Report:
 
 - table of test files × number of tests, final `passed / failed` for Vitest and Playwright (desktop + mobile);
 - every bug found, its cause and the fix (frontend bug, test bug, or backend contract mismatch);
-- screenshots checked (route × width × theme) and remaining visual differences from the board;
+- screenshots checked (route × width) and remaining visual differences from the board;
 - live run results only if the user asked for one, with proof that test data was cleaned up.
 
 ## 6. Docs sync and wrap-up

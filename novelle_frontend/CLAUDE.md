@@ -26,7 +26,7 @@ npm run check          # tsc -b + ESLint + Vitest (gate after every phase)
 npm run build          # type-check + build to dist/
 npm run test:e2e       # Playwright, mocked API, desktop + mobile projects
 npm run test:e2e:live  # @live specs against the real backend: only when the user asks
-npm run shot -- <route> [--width 390] [--theme dark] [--role author] [--mock file.json] [--full]
+npm run shot -- <route> [--width 390] [--role author] [--mock file.json] [--full]
 npx shadcn@latest add <component>
 ```
 
@@ -48,5 +48,5 @@ Vite reads only `VITE_*` variables from `novelle_frontend/.env.local` (template 
 - Chapter HTML: TipTap limited to `p`, `h2`–`h4`, `br`, `em`, `strong`, `blockquote`; always pass through DOMPurify (`utils/sanitizeHtml`) before rendering.
 - Chapter editor: autosave draft every `VITE_AUTOSAVE_INTERVAL_MS` when the content changed; save sends `version` (the chapter `UpdatedAt`); a 409 opens `ConflictModal`. Profile and story updates send `rowVersion`.
 - Dates arrive in UTC and are shown in Vietnam time with Day.js (`utils/format`).
-- Theme: CSS variables in `styles/globals.css` for `:root` and `.dark`; no hard-coded colours in components.
+- Theme: **light only** (no dark mode, no theme switch). CSS variables in `styles/globals.css` (`:root`); no hard-coded colours and no `dark:` classes in components.
 - Use the `@/` alias for imports from `src/`.
