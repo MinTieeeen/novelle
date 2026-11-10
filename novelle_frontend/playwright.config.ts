@@ -24,6 +24,8 @@ export default defineConfig({
   // The Vite dev server transforms modules on first request; more workers than this time out on a cold start.
   workers: 3,
   timeout: 60_000,
+  // Lazy routes are compiled on first request; 5s is too short under 3 parallel workers.
+  expect: { timeout: 10_000 },
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: [['list'], ['html', { outputFolder: './tmp/playwright/report', open: 'never' }]],

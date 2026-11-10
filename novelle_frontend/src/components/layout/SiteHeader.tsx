@@ -80,7 +80,7 @@ export function SiteHeader() {
 
         {/* Below sm the search box collapses into an icon button (SiteHeader spec). */}
         <Button variant="ghost" size="icon" asChild className="ml-auto sm:hidden">
-          <Link to="/search" aria-label="Tìm truyện, tác giả">
+          <Link to="/search" aria-label="Tìm truyện">
             <Search />
           </Link>
         </Button>
@@ -91,8 +91,8 @@ export function SiteHeader() {
               type="search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Tìm truyện, tác giả"
-              aria-label="Tìm truyện, tác giả"
+              placeholder="Tìm truyện"
+              aria-label="Tìm truyện"
               className="min-w-0 flex-1 bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground"
             />
           </label>

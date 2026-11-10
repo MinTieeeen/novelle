@@ -16,8 +16,9 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       strictPort: true,
-      // Pre-transform the shell so the first page load (and parallel Playwright workers) is fast.
-      warmup: { clientFiles: ['./src/main.tsx', './src/app/router.tsx', './src/layouts/*.tsx'] },
+      // Pre-transform all of src/ so the first page load (and parallel Playwright workers) is fast, and so lazy route chunks and the deps only they import are ready before the first visit
+      // (otherwise a first lazy load can trigger a dependency re-optimisation and stall parallel tests).
+      warmup: { clientFiles: ['./src/**/*.tsx', '!./src/**/*.test.tsx'] },
       // Same origin for the SPA and the API, so the SESSION and XSRF-TOKEN cookies work without cross-site settings.
       proxy: {
         [apiBase]: {

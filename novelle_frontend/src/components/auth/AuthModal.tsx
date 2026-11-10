@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { RegisterForm } from '@/components/auth/RegisterForm';
@@ -28,6 +29,13 @@ const panelClass = 'col-start-1 row-start-1 data-[state=inactive]:invisible';
  * Presentational: the caller (auth/AuthModalProvider) calls the API and shows the toasts.
  */
 export function AuthModal({ open, tab, onTabChange, onOpenChange, onLogin, onRegister }: AuthModalProps) {
+  // The popup is opened from code (no DialogTrigger), so Radix has nothing to return focus to on close.
+  // Remember the element focused when it opens; layout effects run before Radix's focus effect.
+  const returnFocus = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (open) returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }, [open]);
+
   return (
     <Dialog
       open={open}
@@ -43,6 +51,14 @@ export function AuthModal({ open, tab, onTabChange, onOpenChange, onLogin, onReg
           e.preventDefault();
           const panel = (e.currentTarget as HTMLElement).querySelector('[role="tabpanel"][data-state="active"]');
           panel?.querySelector<HTMLInputElement>('input')?.focus();
+        }}
+        // Back to the button that opened the popup (unless it is gone, e.g. "Đăng nhập" after logging in).
+        onCloseAutoFocus={(e) => {
+          const target = returnFocus.current;
+          if (target?.isConnected) {
+            e.preventDefault();
+            target.focus();
+          }
         }}
         className="max-h-[calc(100dvh-48px)] max-w-[calc(100%-2rem)] gap-0 overflow-y-auto border-0 p-0 sm:max-w-[460px]"
       >

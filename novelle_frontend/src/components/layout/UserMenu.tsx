@@ -1,4 +1,4 @@
-import { BookMarked, IdCard, LogOut, PenTool, Shield, UserRound } from 'lucide-react';
+import { BookMarked, LogOut, PenTool, Shield, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth/AuthProvider';
@@ -43,9 +43,9 @@ export function UserMenu() {
         <DropdownMenuItem onSelect={() => navigate('/profile')}>
           <UserRound /> Hồ sơ
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => navigate(`/users/${encodeURIComponent(user.username)}`)}>
+        {/* <DropdownMenuItem onSelect={() => navigate(`/users/${encodeURIComponent(user.username)}`)}>
           <IdCard /> Hồ sơ công khai
-        </DropdownMenuItem>
+        </DropdownMenuItem> */}
         {user.role !== 'ADMIN' && (
           <DropdownMenuItem onSelect={() => navigate('/library')}>
             <BookMarked /> Thư viện
