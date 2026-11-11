@@ -88,6 +88,7 @@ novelle_frontend/
    │  └─ admin.ts                Users, review queue, moderation, catalog, statistics
    ├─ auth/
    │  ├─ AuthProvider.tsx        Loads the current user from /api/me; exposes useAuth()
+   │  ├─ AuthModalProvider.tsx   The login/register popup, opened over the current page (useAuthModal)
    │  └─ RequireRole.tsx         Route guard: redirects to /login or shows the 403 page
    ├─ layouts/
    │  ├─ ReaderLayout.tsx        Header with search, genre menu and user menu

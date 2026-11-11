@@ -22,6 +22,9 @@ Run everything from `novelle_frontend/`. `npm run check` = `tsc -b` + ESLint + V
 
 ## End-to-end tests (Playwright, mocked API)
 
+> Written in **FE9**, the last module of the roadmap, for all modules at once (user decision 2026-11-11).
+> Feature modules only list their cases; do not add specs there unless the user asks.
+
 - Config `playwright.config.ts`: Edge (`channel: msedge`, already installed; `PW_CHANNEL=chromium` after
   `npx playwright install chromium`), dev server reused or started, locale `vi-VN`, timezone
   `Asia/Ho_Chi_Minh`, 3 workers (more time out on the cold Vite server).
@@ -66,7 +69,8 @@ Run everything from `novelle_frontend/`. `npm run check` = `tsc -b` + ESLint + V
    Check widths 1440 and 390 (Studio/Admin: 1440 and 1024).
 5. Fix every difference that is not a documented deliberate deviation, re-shoot, and list in the phase
    report: route × width checked, what was fixed, what still differs and why.
-6. Turn each interaction you checked by hand into a Playwright case when the module reaches the test step.
+6. Write each interaction you checked by hand into the module's list of Playwright cases (roadmap section
+   "Ca kiểm thử (viết ở FE9)" and spec §10.7); FE9 turns the lists into specs.
 
 ## After the run
 

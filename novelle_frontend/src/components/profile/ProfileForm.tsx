@@ -23,7 +23,9 @@ export function ProfileForm({ defaultValues, onSubmit }: ProfileFormProps) {
 
   // A newer profile (after save or reload) becomes the new baseline for "dirty".
   const { displayName, bio: savedBio } = defaultValues;
-  useEffect(() => form.reset({ displayName, bio: savedBio }), [displayName, savedBio, form]);
+  useEffect(() => {
+    form.reset({ displayName, bio: savedBio });
+  }, [displayName, savedBio, form]);
 
   async function submit(values: ProfileValues) {
     try {

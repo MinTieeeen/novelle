@@ -62,6 +62,16 @@
   --warning-soft: #fbe8d8;
   --critical-soft: #f8e1df;
   --scrim: rgb(14 15 34 / 0.55);
+  /* TopList medals (board TopList): gold, silver, bronze */
+  --medal-gold: #f4c65a;
+  --medal-gold-ring: #c98a0e;
+  --medal-gold-ink: #3d2a00;
+  --medal-silver: #d9dbe6;
+  --medal-silver-ring: #9a9db5;
+  --medal-silver-ink: #2b2d40;
+  --medal-bronze: #d49a6a;
+  --medal-bronze-ring: #9c5f2e;
+  --medal-bronze-ink: #2e1806;
 
   --shadow-raise-value: 0 1px 2px rgb(31 33 96 / 0.06), 0 6px 20px rgb(31 33 96 / 0.08);
   --shadow-cover-value: 0 2px 4px rgb(31 33 96 / 0.12), 0 10px 22px rgb(31 33 96 / 0.16);
@@ -114,6 +124,15 @@
   --color-warning-soft: var(--warning-soft);
   --color-critical-soft: var(--critical-soft);
   --color-scrim: var(--scrim);
+  --color-medal-gold: var(--medal-gold);
+  --color-medal-gold-ring: var(--medal-gold-ring);
+  --color-medal-gold-ink: var(--medal-gold-ink);
+  --color-medal-silver: var(--medal-silver);
+  --color-medal-silver-ring: var(--medal-silver-ring);
+  --color-medal-silver-ink: var(--medal-silver-ink);
+  --color-medal-bronze: var(--medal-bronze);
+  --color-medal-bronze-ring: var(--medal-bronze-ring);
+  --color-medal-bronze-ink: var(--medal-bronze-ink);
 
   /* Reading surfaces: fixed, independent of the site theme */
   --color-reader-paper: #ffffff;
@@ -213,6 +232,14 @@
   border-radius: var(--radius-cover);
   box-shadow: var(--shadow-cover-value), inset 3px 0 0 rgb(0 0 0 / 0.18);
   overflow: hidden;
+}
+
+/* Horizontal scrollers (genre bar, shelves on mobile): no visible scrollbar, still scrollable. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Counters and stats use tabular figures. */

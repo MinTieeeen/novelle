@@ -5,7 +5,7 @@ paths:
 
 # Frontend module workflow
 
-Read this before planning or starting a frontend module (FE1 users … FE8). It is the frontend version of
+Read this before planning or starting a frontend module (FE1 users … FE8; FE9 is the Playwright module). It is the frontend version of
 `module-workflow.md`: same six steps, same rule that the user approves each step before the next one
 starts. Order, scope and APIs of every module: `../docs/frontend-roadmap.md`.
 
@@ -39,7 +39,8 @@ In this order:
 4. Data layer: `types/<domain>.ts`, `api/<domain>.ts` functions, query keys, which mutation invalidates which
    keys, optimistic updates (if any), Zod schemas with the backend limits.
 5. Files per phase (see § 4).
-6. Verification: Vitest tests, Playwright specs (mocked), the browser checks per screen, live checks if any.
+6. Verification: Vitest tests, the browser checks per screen, and the list of Playwright cases to write
+   later in FE9 (no Playwright spec is written during a feature module).
 
 ## 3. Spec update
 
@@ -68,12 +69,21 @@ and checked with mocked `/api` responses. Booting the backend and loading public
 
 ## 5. Test
 
-After the user reviewed the code: follow `frontend-testing.md`. Report:
+**Playwright end-to-end tests are not written module by module.** The user decided (2026-11-11) that the
+whole e2e suite is written in the last module of the roadmap, **FE9**, once FE1–FE8 are done and the UI is
+stable. In a feature module the test step is:
 
-- table of test files × number of tests, final `passed / failed` for Vitest and Playwright (desktop + mobile);
-- every bug found, its cause and the fix (frontend bug, test bug, or backend contract mismatch);
-- screenshots checked (route × width) and remaining visual differences from the board;
-- live run results only if the user asked for one, with proof that test data was cleaned up.
+- Vitest for pure helpers, schemas and logic-heavy components (`npm run check` green);
+- the browser verification loop of every screen and state (`frontend-testing.md` § Browser verification);
+- the list of Playwright cases of the module, written in the module section of `../docs/frontend-roadmap.md`
+  ("Ca kiểm thử (viết ở FE9)") and in §10.7 of the module spec.
+
+Report: Vitest files × tests and totals; every bug found, its cause and fix; screenshots checked (route ×
+width) and remaining differences from the board. Run Playwright in a feature module only if the user asks.
+
+In **FE9**: follow `frontend-testing.md` § End-to-end tests for every module, then report spec files × cases,
+`passed / failed` per project (desktop + mobile), bugs found (frontend, test or backend contract), and live
+results only if the user asked for a live run (with proof that test data was cleaned up).
 
 ## 6. Docs sync and wrap-up
 

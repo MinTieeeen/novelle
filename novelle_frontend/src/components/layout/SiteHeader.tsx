@@ -1,10 +1,11 @@
-import { ChevronDown, Menu, PenTool, Search, Shield } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
-import { Link, NavLink, useNavigate, useSearchParams } from 'react-router-dom';
+import { Menu, PenTool, Shield } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuthModal } from '@/auth/AuthModalProvider';
 import { useAuth } from '@/auth/AuthProvider';
 import { Logo } from '@/components/brand/Logo';
 import { Container } from '@/components/layout/Container';
+import { HeaderSearch, MobileSearchRow, MobileSearchToggle } from '@/components/layout/HeaderSearch';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -17,89 +18,81 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   );
 
 /**
- * ReaderLayout header (SiteHeader design): wordmark → nav → search → role link → avatar.
- * Guests see "Đăng nhập" (ghost) and "Đăng ký" (primary). On mobile the nav moves into a Sheet.
- * The genre mega-menu and the quick-search dropdown are added with the catalog/search module.
+ * ReaderLayout header: wordmark → wide search box in the middle (search on Enter only) → Thư viện →
+ * role link → avatar (guests: Đăng nhập / Đăng ký). Genres are in the GenreBar under the header, not in
+ * the nav. On mobile the nav moves into a Sheet and the search box into a row opened by an icon.
  */
 export function SiteHeader() {
   const { user, status } = useAuth();
-  const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const [q, setQ] = useState(params.get('q') ?? '');
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  function submitSearch(e: FormEvent) {
-    e.preventDefault();
-    const keyword = q.trim();
-    navigate(keyword ? `/search?q=${encodeURIComponent(keyword)}` : '/search');
-  }
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchToggle = useRef<HTMLButtonElement>(null);
+  const { pathname, search } = useLocation();
+  // Close the mobile search row after a search or any navigation.
+  useEffect(() => setSearchOpen(false), [pathname, search]);
 
   const navItems = [
     // { to: '/', label: 'Trang chủ', end: true },
-    { to: '/search', label: 'Thể loại', end: false, chevron: true },
     ...(user && user.role !== 'ADMIN' ? [{ to: '/library', label: 'Thư viện', end: false }] : []),
   ];
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-card">
-      <Container className="flex min-h-header items-center gap-x-2 gap-y-3 sm:gap-x-6">
-        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="md:hidden" aria-label="Mở menu">
-              <Menu />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-72">
-            <SheetHeader>
-              <SheetTitle>
-                <Logo />
-              </SheetTitle>
-            </SheetHeader>
-            <nav aria-label="Chính" className="flex flex-col gap-1 px-4">
-              {navItems.map((item) => (
-                <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass} onClick={() => setMobileOpen(false)}>
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
-          </SheetContent>
-        </Sheet>
+    <header className="border-b border-border bg-card">
+      <Container className="flex min-h-header items-center gap-x-2 sm:gap-x-6">
+        {navItems.length > 0 && (
+          <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="md:hidden" aria-label="Mở menu">
+                <Menu />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-72">
+              <SheetHeader>
+                <SheetTitle>
+                  <Logo />
+                </SheetTitle>
+              </SheetHeader>
+              <nav aria-label="Chính" className="flex flex-col gap-1 px-4">
+                {navItems.map((item) => (
+                  <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass} onClick={() => setMenuOpen(false)}>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </nav>
+            </SheetContent>
+          </Sheet>
+        )}
 
         <Link to="/" aria-label="Novelle — Trang chủ" className="flex shrink-0">
           <Logo alt="Novelle" className="h-6 sm:h-[30px]" />
         </Link>
 
-        <nav aria-label="Chính" className="hidden gap-1 md:flex">
-          {navItems.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass}>
-              {item.label}
-              {item.chevron && <ChevronDown className="size-4" strokeWidth={1.75} aria-hidden />}
-            </NavLink>
-          ))}
-        </nav>
+        <div className="hidden min-w-0 flex-1 justify-center sm:flex">
+          <HeaderSearch />
+        </div>
 
-        {/* Below sm the search box collapses into an icon button (SiteHeader spec). */}
-        <Button variant="ghost" size="icon" asChild className="ml-auto sm:hidden">
-          <Link to="/search" aria-label="Tìm truyện">
-            <Search />
-          </Link>
-        </Button>
-        <form role="search" onSubmit={submitSearch} className="hidden flex-1 justify-end sm:flex">
-          <label className="flex h-10 w-full max-w-[360px] items-center gap-2 rounded-md bg-secondary px-3 text-muted-foreground focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring focus-within:outline-solid">
-            <Search className="size-[18px] shrink-0" strokeWidth={1.75} aria-hidden />
-            <input
-              type="search"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Tìm truyện"
-              aria-label="Tìm truyện"
-              className="min-w-0 flex-1 bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground"
-            />
-          </label>
-        </form>
+        <MobileSearchToggle ref={searchToggle} open={searchOpen} onToggle={() => setSearchOpen((v) => !v)} />
+
+        {navItems.length > 0 && (
+          <nav aria-label="Chính" className="hidden gap-1 md:flex">
+            {navItems.map((item) => (
+              <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass}>
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+        )}
 
         {status !== 'loading' && (user ? <SignedInActions /> : <GuestActions />)}
       </Container>
+      {searchOpen && (
+        <MobileSearchRow
+          onClose={() => {
+            setSearchOpen(false);
+            searchToggle.current?.focus();
+          }}
+        />
+      )}
     </header>
   );
 }

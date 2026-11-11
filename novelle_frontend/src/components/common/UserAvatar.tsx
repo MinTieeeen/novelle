@@ -12,6 +12,8 @@ const SIZES = {
   md: { box: 'size-10', text: 'text-body', badge: 'size-4', check: 'size-3' },
   /** author page, profile */
   lg: { box: 'size-18', text: 'text-[26px]', badge: 'size-[22px]', check: 'size-3.5' },
+  /** AuthorHeader board: 112px, serif initials */
+  xl: { box: 'size-28', text: 'font-serif text-[40px]', badge: 'size-7 right-0.5 bottom-0.5 ring-[3px]', check: 'size-4' },
 } as const;
 
 interface UserAvatarProps {

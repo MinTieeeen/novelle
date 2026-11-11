@@ -6,6 +6,7 @@ import AdminLayout from '@/layouts/AdminLayout';
 import ReaderLayout from '@/layouts/ReaderLayout';
 import StudioLayout from '@/layouts/StudioLayout';
 import NotFoundPage from '@/pages/errors/NotFoundPage';
+import GenreRedirect from '@/pages/reader/GenreRedirect';
 
 /* Pages are code-split per route. Board ids (R1, S4, AD2, ...) refer to the screen design canvas. */
 const HomePage = lazy(() => import('@/pages/reader/HomePage'));
@@ -37,11 +38,13 @@ const page = (node: ReactNode) => <Suspense fallback={<FullPageSpinner />}>{node
 // Dev-only token/component preview; the import is dropped from production builds.
 const DesignSystemPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/DesignSystemPage')) : null;
 const AccountPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/AccountPreviewPage')) : null;
+const StoryPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/StoryPreviewPage')) : null;
 const devRoutes: RouteObject[] =
-  DesignSystemPage && AccountPreviewPage
+  DesignSystemPage && AccountPreviewPage && StoryPreviewPage
     ? [
         { path: 'dev/design-system', element: page(<DesignSystemPage />) },
         { path: 'dev/account', element: page(<AccountPreviewPage />) },
+        { path: 'dev/story', element: page(<StoryPreviewPage />) },
       ]
     : [];
 
@@ -52,6 +55,7 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: page(<HomePage />) }, // R1
       { path: 'search', element: page(<SearchPage />) }, // R2
+      { path: 'genres/:slug', element: <GenreRedirect /> },
       { path: 'stories/:slug', element: page(<StoryDetailPage />) }, // R3
       { path: 'authors/:authorId', element: page(<AuthorPage />) }, // R4
       { path: 'users/:username', element: page(<PublicProfilePage />) },

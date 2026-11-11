@@ -61,7 +61,25 @@ export const http = axios.create({
   xsrfHeaderName: XSRF_HEADER,
   headers: { Accept: 'application/json' },
   timeout: 20_000,
+  // Spring binds List<String> from repeated keys: genres=a&genres=b (Axios' default is genres[]=a).
+  paramsSerializer: { serialize: serializeParams },
 });
+
+/**
+ * Query string for GET requests: arrays repeat their key, `undefined` / `null` / `''` are dropped,
+ * values are URL-encoded (Vietnamese text in `q`).
+ */
+export function serializeParams(params: Record<string, unknown>): string {
+  const out = new URLSearchParams();
+  for (const [key, value] of Object.entries(params ?? {})) {
+    const values = Array.isArray(value) ? value : [value];
+    for (const v of values) {
+      if (v === undefined || v === null || v === '') continue;
+      out.append(key, String(v));
+    }
+  }
+  return out.toString();
+}
 
 function readCookie(name: string): string | null {
   const match = document.cookie.split('; ').find((c) => c.startsWith(`${name}=`));

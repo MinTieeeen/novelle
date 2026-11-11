@@ -51,6 +51,19 @@ export function formatRelative(iso: string | null | undefined): string {
   return iso ? dayjs.utc(iso).fromNow() : '';
 }
 
+/** "2026-03-04T…Z" → "tháng 3/2026" (AuthorHeader: "Tham gia từ tháng 3/2026") */
+export function formatMonthYear(iso: string | null | undefined): string {
+  return iso ? `tháng ${dayjs.utc(iso).tz(VN_TZ).format('M/YYYY')}` : '';
+}
+
+/** Chapter numbers of a volume → "Chương 41–87" ("Chương 5" for one chapter, "" when empty). */
+export function chapterRange(chapterNos: number[]): string {
+  if (chapterNos.length === 0) return '';
+  const min = Math.min(...chapterNos);
+  const max = Math.max(...chapterNos);
+  return min === max ? `Chương ${min}` : `Chương ${min}–${max}`;
+}
+
 /** Local date + "HH:mm" typed in Vietnam time → UTC ISO string for the API (schedule publish). */
 export function vnLocalToUtcIso(date: Date, time: string): string {
   const [h, m] = time.split(':').map(Number);
