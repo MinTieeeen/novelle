@@ -134,6 +134,16 @@
   --color-medal-bronze-ring: var(--medal-bronze-ring);
   --color-medal-bronze-ink: var(--medal-bronze-ink);
 
+  /* Current reading surface (set by [data-reader-theme]) */
+  --color-reader-bg: var(--r-bg);
+  --color-reader-ink: var(--r-ink);
+  --color-reader-muted: var(--r-muted);
+  --color-reader-line: var(--r-line);
+  --color-reader-bar: var(--r-bar);
+  --color-reader-hover: var(--r-hover);
+  --color-reader-accent: var(--r-accent);
+  --color-reader-accent-ink: var(--r-accent-ink);
+
   /* Reading surfaces: fixed, independent of the site theme */
   --color-reader-paper: #ffffff;
   --color-reader-paper-ink: #23242f;
@@ -185,6 +195,42 @@
   --container-reading: 680px;
   --spacing-sidebar: 248px;
   --spacing-header: 64px;
+}
+
+/*
+ * Reading surfaces of the chapter reader (ReaderToolbar, ChapterNav, ReaderSettings boards). Fixed sets that
+ * do not follow the site theme; the reader page sets data-reader-theme on its root and components use the
+ * reader-* colours (bg-reader-bg, text-reader-muted, border-reader-line, bg-reader-accent …).
+ */
+[data-reader-theme='paper'] {
+  --r-bg: #ffffff;
+  --r-ink: #23242f;
+  --r-muted: #5b5d73;
+  --r-line: #dcdde8;
+  --r-bar: #ffffff;
+  --r-hover: #eeeff5;
+  --r-accent: #1f2160;
+  --r-accent-ink: #ffffff;
+}
+[data-reader-theme='sepia'] {
+  --r-bg: #f3e9d2;
+  --r-ink: #4a3b28;
+  --r-muted: #6e5a40;
+  --r-line: #dccca8;
+  --r-bar: #efe3c8;
+  --r-hover: #e4d5b3;
+  --r-accent: #4a3b28;
+  --r-accent-ink: #f3e9d2;
+}
+[data-reader-theme='night'] {
+  --r-bg: #0f1024;
+  --r-ink: #cfcde0;
+  --r-muted: #a3a5c2;
+  --r-line: #2e3156;
+  --r-bar: #16172e;
+  --r-hover: #262a5c;
+  --r-accent: #b6baf7;
+  --r-accent-ink: #0f1024;
 }
 
 @layer base {

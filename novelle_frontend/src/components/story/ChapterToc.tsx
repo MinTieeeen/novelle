@@ -3,7 +3,8 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { chapterLabel, type ChapterToc as Chapter, type VolumeToc } from '@/types/story';
-import { chapterRange, formatDate, formatNumber } from '@/utils/format';
+import { formatDate, formatNumber } from '@/utils/format';
+import { buildTocGroups, type TocGroup } from './tocGroups';
 
 interface ChapterTocProps {
   volumes: VolumeToc[];
@@ -14,13 +15,6 @@ interface ChapterTocProps {
   currentChapterId?: number | null;
 }
 
-interface Group {
-  key: string;
-  heading: string;
-  range: string;
-  chapters: Chapter[];
-}
-
 /**
  * Table of contents (TableOfContents board / DS TableOfContents): one collapsible group per volume
  * ("Tập 2 · Tên · Chương 41–87"), loose chapters last, dates DD/MM/YYYY, oldest/newest toggle.
@@ -29,26 +23,10 @@ interface Group {
 export function ChapterToc({ volumes, looseChapters, chapterCount, currentChapterNo, currentChapterId }: ChapterTocProps) {
   const [newestFirst, setNewestFirst] = useState(false);
 
-  const groups = useMemo<Group[]>(() => {
-    const out: Group[] = volumes.map((v) => ({
-      key: `v${v.volumeId}`,
-      heading: `Tập ${v.volumeNo} · ${v.title}`,
-      range: chapterRange(v.chapters.map((c) => c.chapterNo)),
-      chapters: v.chapters,
-    }));
-    if (looseChapters.length > 0) {
-      out.push({
-        key: 'loose',
-        heading: volumes.length > 0 ? 'Chương lẻ' : 'Danh sách chương',
-        range: chapterRange(looseChapters.map((c) => c.chapterNo)),
-        chapters: looseChapters,
-      });
-    }
-    const sorted = out.map((g) => ({
-      ...g,
-      chapters: [...g.chapters].sort((a, b) => (newestFirst ? b.chapterNo - a.chapterNo : a.chapterNo - b.chapterNo)),
-    }));
-    return newestFirst ? sorted.reverse() : sorted;
+  const groups = useMemo<TocGroup[]>(() => {
+    const sorted = buildTocGroups(volumes, looseChapters);
+    if (!newestFirst) return sorted;
+    return sorted.map((g) => ({ ...g, chapters: [...g.chapters].reverse() })).reverse();
   }, [volumes, looseChapters, newestFirst]);
 
   // Opened groups are set once from the reading position; flipping the order keeps them.

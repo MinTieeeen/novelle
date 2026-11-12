@@ -39,12 +39,17 @@ const page = (node: ReactNode) => <Suspense fallback={<FullPageSpinner />}>{node
 const DesignSystemPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/DesignSystemPage')) : null;
 const AccountPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/AccountPreviewPage')) : null;
 const StoryPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/StoryPreviewPage')) : null;
+const LibraryPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/LibraryPreviewPage')) : null;
+const ReaderPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/ReaderPreviewPage')) : null;
+/** Full-screen previews (outside ReaderLayout, like the pages they preview). */
+const devFullRoutes: RouteObject[] = ReaderPreviewPage ? [{ path: '/dev/reader', element: page(<ReaderPreviewPage />) }] : [];
 const devRoutes: RouteObject[] =
-  DesignSystemPage && AccountPreviewPage && StoryPreviewPage
+  DesignSystemPage && AccountPreviewPage && StoryPreviewPage && LibraryPreviewPage
     ? [
         { path: 'dev/design-system', element: page(<DesignSystemPage />) },
         { path: 'dev/account', element: page(<AccountPreviewPage />) },
         { path: 'dev/story', element: page(<StoryPreviewPage />) },
+        { path: 'dev/library', element: page(<LibraryPreviewPage />) },
       ]
     : [];
 
@@ -83,6 +88,7 @@ export const routes: RouteObject[] = [
 
   // R6: full-screen reader, no site header.
   { path: '/chapters/:chapterId', element: page(<ReaderPage />) },
+  ...devFullRoutes,
 
   {
     path: '/studio',

@@ -164,7 +164,7 @@ export default function DesignSystemPage() {
         <h2 className="text-title-2 font-semibold">Vùng đọc và bìa</h2>
         <div className="grid gap-4 md:grid-cols-3">
           {(['paper', 'sepia', 'night'] as const).map((t) => (
-            <div key={t} className="reader rounded-lg border border-border p-6" data-theme={t}>
+            <div key={t} className="reader rounded-lg border border-reader-line bg-reader-bg p-6 text-reader-ink" data-reader-theme={t}>
               <p className="mb-2 font-sans text-caption opacity-70">{t}</p>
               <p>Gió từ sông thổi vào, mang theo mùi bùn non và tiếng mái chèo khua nước.</p>
             </div>

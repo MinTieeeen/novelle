@@ -1,7 +1,7 @@
 /*
- * Chapter reading surface. The three reading backgrounds (paper, sepia, night) are a reader setting; the
- * site itself is light-only.
- * useReaderSettings writes data-theme, --reader-size and --reader-leading on the .reader element.
+ * Chapter text. The reading surface colours come from [data-reader-theme] (globals.css, reader-* tokens);
+ * this file only sets the typography of the chapter body. useReaderSettings writes --reader-size and
+ * --reader-leading on the reader root.
  */
 .reader {
   font-family: var(--font-serif);
@@ -10,24 +10,8 @@
   line-height: var(--reader-leading, 1.75);
   overflow-wrap: break-word;
 }
-.reader[data-theme='paper'] {
-  background: var(--color-reader-paper);
-  color: var(--color-reader-paper-ink);
-}
-.reader[data-theme='sepia'] {
-  background: var(--color-reader-sepia);
-  color: var(--color-reader-sepia-ink);
-}
-.reader[data-theme='night'] {
-  background: var(--color-reader-night);
-  color: var(--color-reader-night-ink);
-}
-.reader .reader-column {
-  max-width: var(--container-reading);
-  margin-inline: auto;
-}
 .reader p {
-  margin: 0 0 1em;
+  margin: 0 0 1.1em;
 }
 .reader h2,
 .reader h3,

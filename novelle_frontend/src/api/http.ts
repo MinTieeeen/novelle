@@ -1,8 +1,8 @@
 import axios, { AxiosError, type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios';
 import type { ApiErrorBody, CsrfResponse } from '@/types/api';
 
-const XSRF_COOKIE = 'XSRF-TOKEN';
-const XSRF_HEADER = 'X-XSRF-TOKEN';
+export const XSRF_COOKIE = 'XSRF-TOKEN';
+export const XSRF_HEADER = 'X-XSRF-TOKEN';
 const SAFE_METHODS = new Set(['get', 'head', 'options']);
 
 /** Error thrown by every function in src/api/: the backend ApiError body, or a synthetic one. */
@@ -81,7 +81,8 @@ export function serializeParams(params: Record<string, unknown>): string {
   return out.toString();
 }
 
-function readCookie(name: string): string | null {
+/** Reads a cookie set for this origin (the XSRF token is not HttpOnly). */
+export function readCookie(name: string): string | null {
   const match = document.cookie.split('; ').find((c) => c.startsWith(`${name}=`));
   return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
 }

@@ -2,8 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { getAuthorStories } from '@/api/authors';
 import { queryKeys } from '@/api/queryKeys';
+import { getProgress } from '@/api/reading';
 import { getStory } from '@/api/stories';
+import { useAuth } from '@/auth/AuthProvider';
 import { ErrorResult } from '@/components/common/ErrorResult';
+import { ContinueReadingButton } from '@/components/reader/ContinueReadingButton';
 import { SameAuthorList } from '@/components/story/AuthorBlocks';
 import { ChapterToc } from '@/components/story/ChapterToc';
 import { StoryAbout } from '@/components/story/StoryAbout';
@@ -16,7 +19,8 @@ import { hasCode } from '@/utils/errors';
 
 /**
  * R3 · Chi tiết truyện (StoryDetail board): hero, "Giới thiệu", table of contents and, on the right,
- * "Cùng tác giả". Follow / reading list / rating (FE4) and "Đọc tiếp" (FE3) plug into the hero slots.
+ * "Cùng tác giả". A logged-in reader with a position gets "Đọc tiếp" and the "Đang đọc" row in the TOC
+ * (FE3); follow / reading list / rating (FE4) plug into the hero's actionsSlot.
  */
 export default function StoryDetailPage() {
   const { slug = '' } = useParams();
@@ -28,6 +32,16 @@ export default function StoryDetailPage() {
     enabled: authorId != null,
     staleTime: 5 * 60_000,
   });
+  // "Đọc tiếp": my position in this story (logged in only). 204 → null, errors just hide the button.
+  const { user } = useAuth();
+  const storyId = story.data?.storyId;
+  const progress = useQuery({
+    queryKey: queryKeys.readingProgress(storyId ?? 0),
+    queryFn: () => getProgress(storyId!),
+    enabled: !!user && storyId != null,
+    retry: false,
+  });
+  const reading = user ? progress.data ?? null : null;
   useDocumentTitle(story.data?.title);
 
   if (story.isPending) return <StoryDetailSkeleton />;
@@ -54,11 +68,23 @@ export default function StoryDetailPage() {
 
   return (
     <>
-      <StoryHero story={s} firstChapterId={firstChapter(s)?.chapterId ?? null} />
+      <StoryHero
+        story={s}
+        firstChapterId={firstChapter(s)?.chapterId ?? null}
+        continueSlot={reading && <ContinueReadingButton progress={reading} />}
+      />
       <div className="flex flex-col gap-12 lg:flex-row lg:items-start lg:gap-10">
         <div className="flex min-w-0 flex-1 flex-col gap-12 lg:max-w-[760px]">
           <StoryAbout description={s.description} />
-          <ChapterToc volumes={s.volumes} looseChapters={s.looseChapters} chapterCount={s.chapterCount} />
+          {/* Remount when the position arrives, so the volume being read opens. */}
+          <ChapterToc
+            key={reading?.chapterId ?? 'none'}
+            volumes={s.volumes}
+            looseChapters={s.looseChapters}
+            chapterCount={s.chapterCount}
+            currentChapterId={reading?.chapterId}
+            currentChapterNo={reading?.chapterNo}
+          />
           {/* RatingSection (FE4) goes here. */}
         </div>
         <div className="lg:sticky lg:top-[136px] lg:w-[300px] lg:shrink-0">
