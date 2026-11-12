@@ -52,7 +52,16 @@ export function AddToListPopover({
           Thêm vào tủ
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[300px] rounded-lg p-0" aria-label="Thêm vào tủ truyện">
+      <PopoverContent
+        align="start"
+        className="w-[300px] rounded-lg p-0"
+        aria-label="Thêm vào tủ truyện"
+        // Lists may still be loading: start on the panel itself, Tab then reaches the first list.
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          (e.currentTarget as HTMLElement).focus();
+        }}
+      >
         <p className="border-b border-border px-4 py-3 font-serif text-[17px] leading-6 font-semibold">Thêm vào tủ</p>
         <div className="max-h-[280px] overflow-y-auto py-1.5">
           {lists === undefined && !error && (

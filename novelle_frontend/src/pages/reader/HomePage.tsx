@@ -1,7 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { getHome } from '@/api/catalog';
+import { getHistory } from '@/api/library';
 import { queryKeys } from '@/api/queryKeys';
+import { Link } from 'react-router-dom';
+import { useAuth } from '@/auth/AuthProvider';
 import { ErrorResult } from '@/components/common/ErrorResult';
+import { ContinueCard } from '@/components/library/ContinueCard';
 import { GenreGrid, TopList, UpdatedList } from '@/components/story/HomeLists';
 import { StoryShelf } from '@/components/story/StoryShelf';
 import { StoryGridSkeleton, StoryRowsSkeleton } from '@/components/story/StorySkeletons';
@@ -10,13 +14,21 @@ import { useDocumentTitle, useGenres } from '@/hooks/useCatalog';
 
 /**
  * R1 · Trang chủ (Main board): Mới cập nhật + Xem nhiều nhất side by side, then the shelves Truyện mới,
- * Đánh giá cao, Đã hoàn thành, then the genre grid. The "Đọc tiếp" block above them comes with FE4.
- * An empty block is hidden.
+ * Đánh giá cao, Đã hoàn thành, then the genre grid. A logged-in reader with a history first gets
+ * "Chào {tên}, đọc tiếp nhé" with up to 3 ContinueCards (FE4). An empty block is hidden.
  */
 export default function HomePage() {
   useDocumentTitle(null);
   const home = useQuery({ queryKey: queryKeys.home, queryFn: getHome, staleTime: 2 * 60_000 });
   const genres = useGenres();
+  const { user } = useAuth();
+  const reading = useQuery({
+    queryKey: queryKeys.library.history(3),
+    queryFn: () => getHistory({ page: 0, size: 3 }),
+    enabled: !!user && user.role !== 'ADMIN',
+    staleTime: 30_000,
+  });
+  const continueItems = user ? (reading.data?.items ?? []) : [];
 
   if (home.isError) {
     return (
@@ -32,6 +44,24 @@ export default function HomePage() {
   return (
     <>
       <h1 className="sr-only">Novelle: truyện dài kỳ, đọc từng chương</h1>
+
+      {user && continueItems.length > 0 && (
+        <section aria-labelledby="h-continue" className="flex flex-col gap-4">
+          <div className="flex items-baseline justify-between gap-4">
+            <h2 id="h-continue" className="text-title-2 font-semibold">
+              Chào {user.displayName}, đọc tiếp nhé
+            </h2>
+            <Link to="/library" className="shrink-0 text-label font-medium text-link hover:underline">
+              Mở thư viện
+            </Link>
+          </div>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(320px,100%),1fr))] gap-4">
+            {continueItems.map((h) => (
+              <ContinueCard key={h.story.storyId} item={h} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="flex flex-wrap items-start gap-8">
         <div className="min-w-0 flex-[999_1_560px]">

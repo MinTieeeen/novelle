@@ -8,6 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { useReturnFocus } from '@/hooks/useReturnFocus';
 import { LIBRARY_MSG, LIST_DESCRIPTION_MAX, readingListSchema, type ReadingListValues } from '@/types/library';
 import { formatNumber } from '@/utils/format';
 import { applyApiError } from '@/utils/formErrors';
@@ -32,6 +33,7 @@ export function ReadingListFormDialog({ open, onOpenChange, mode, defaultValues,
   const form = useForm<ReadingListValues>({ resolver: zodResolver(readingListSchema), defaultValues: { ...EMPTY, ...defaultValues } });
   const description = useWatch({ control: form.control, name: 'description' }) ?? '';
   const pending = form.formState.isSubmitting;
+  const returnFocus = useReturnFocus(open);
 
   // Each opening starts from the given values.
   const { name, description: savedDescription, isPublic } = { ...EMPTY, ...defaultValues };
@@ -56,7 +58,7 @@ export function ReadingListFormDialog({ open, onOpenChange, mode, defaultValues,
 
   return (
     <Dialog open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
-      <DialogContent className="max-w-[460px] gap-5 sm:max-w-[460px]">
+      <DialogContent className="max-w-[460px] gap-5 sm:max-w-[460px]" onCloseAutoFocus={returnFocus}>
         <DialogHeader>
           <DialogTitle className="font-serif text-title-3">{title}</DialogTitle>
           <DialogDescription>Tủ truyện giúp bạn gom các truyện theo chủ đề.</DialogDescription>

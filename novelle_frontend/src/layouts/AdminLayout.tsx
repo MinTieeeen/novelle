@@ -2,15 +2,16 @@ import { ChartColumn, IdCard, ShieldCheck, Tag, Users } from 'lucide-react';
 import { Outlet } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthProvider';
 import { SideNav, type SideNavItem } from '@/components/layout/SideNav';
+import { usePendingRequestCount } from '@/hooks/usePendingRequestCount';
 
 /** Admin frame (designed for ≥ 1024px first): sidebar + page column. */
 export default function AdminLayout() {
   const { user } = useAuth();
-  // The pending author-request counter is wired with the admin module.
+  const pending = usePendingRequestCount();
   const items: SideNavItem[] = [
     { to: '/admin/dashboard', label: 'Thống kê', icon: ChartColumn },
     { to: '/admin/users', label: 'Người dùng', icon: Users },
-    { to: '/admin/author-requests', label: 'Yêu cầu tác giả', icon: IdCard },
+    { to: '/admin/author-requests', label: 'Yêu cầu tác giả', icon: IdCard, count: pending },
     { to: '/admin/stories', label: 'Kiểm duyệt truyện', icon: ShieldCheck },
     { to: '/admin/catalog', label: 'Danh mục', icon: Tag },
   ];

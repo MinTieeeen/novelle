@@ -95,3 +95,14 @@ describe('authorRequestSchema', () => {
     expect(requestCode(12345)).toBe('AR-12345');
   });
 });
+
+describe('waitingLabel', () => {
+  it('counts Vietnam calendar days', async () => {
+    const { waitingLabel } = await import('./authorRequest');
+    const now = new Date('2026-11-12T03:00:00Z'); // 10:00 in Vietnam
+    expect(waitingLabel('2026-11-12T00:30:00Z', now)).toBe('Mới gửi hôm nay');
+    expect(waitingLabel('2026-11-11T16:59:00Z', now)).toBe('Chờ 1 ngày'); // 23:59 on the 11th in Vietnam
+    expect(waitingLabel('2026-11-11T17:00:00Z', now)).toBe('Mới gửi hôm nay');
+    expect(waitingLabel('2026-11-07T10:00:00Z', now)).toBe('Chờ 5 ngày');
+  });
+});

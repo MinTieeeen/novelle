@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, Users } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { queryKeys } from '@/api/queryKeys';
+import { getPublicLists } from '@/api/readingLists';
 import { getPublicProfile } from '@/api/users';
 import { ErrorResult } from '@/components/common/ErrorResult';
 import { UserAvatar } from '@/components/common/UserAvatar';
@@ -15,7 +16,7 @@ import { formatDate, formatNumber } from '@/utils/format';
 
 /**
  * /users/:username: public profile (no email or status). Authors also show their pen name, verified tick
- * and follower count, with a link to the author page. Public reading lists come with FE4.
+ * and follower count, with a link to the author page. Then the user's public reading lists (FE4, T9).
  */
 export default function PublicProfilePage() {
   const { username = '' } = useParams();
@@ -84,7 +85,37 @@ export default function PublicProfilePage() {
           </CardContent>
         </Card>
       )}
+
+      <PublicLists username={p.username} />
     </div>
+  );
+}
+
+/** "Tủ truyện công khai" (T9): name, count, description; hidden when there is none. */
+function PublicLists({ username }: { username: string }) {
+  const lists = useQuery({ queryKey: queryKeys.readingLists.publicOf(username), queryFn: () => getPublicLists(username) });
+  if (!lists.data || lists.data.length === 0) return null;
+  return (
+    <section aria-labelledby="pub-lists" className="flex flex-col gap-4">
+      <h2 id="pub-lists" className="text-title-2 font-semibold">
+        Tủ truyện công khai{' '}
+        <span className="num font-sans text-label font-normal text-muted-foreground">{formatNumber(lists.data.length)}</span>
+      </h2>
+      <ul className="grid gap-3 sm:grid-cols-2">
+        {lists.data.map((l) => (
+          <li key={l.listId}>
+            <Link
+              to={`/lists/${l.listId}`}
+              className="flex h-full flex-col gap-1 rounded-lg border border-border bg-card p-4 transition-shadow hover:shadow-raise"
+            >
+              <span className="font-serif text-[17px] leading-6 font-semibold">{l.name}</span>
+              <span className="text-small text-muted-foreground">{formatNumber(l.itemCount)} truyện</span>
+              {l.description && <span className="line-clamp-2 text-label text-muted-foreground">{l.description}</span>}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

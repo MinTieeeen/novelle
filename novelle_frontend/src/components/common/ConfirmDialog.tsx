@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { useReturnFocus } from '@/hooks/useReturnFocus';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -45,9 +46,10 @@ export function ConfirmDialog({
   pending,
   onConfirm,
 }: ConfirmDialogProps) {
+  const returnFocus = useReturnFocus(open);
   return (
     <AlertDialog open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
-      <AlertDialogContent className="max-w-[440px] gap-5 p-6 sm:max-w-[440px]">
+      <AlertDialogContent className="max-w-[440px] gap-5 p-6 sm:max-w-[440px]" onCloseAutoFocus={returnFocus}>
         <AlertDialogHeader className="place-items-start text-left">
           <AlertDialogTitle className="font-serif text-title-3">{title}</AlertDialogTitle>
           {description && <AlertDialogDescription className="text-body text-muted-foreground">{description}</AlertDialogDescription>}

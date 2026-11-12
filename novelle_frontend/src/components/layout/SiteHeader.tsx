@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuthModal } from '@/auth/AuthModalProvider';
 import { useAuth } from '@/auth/AuthProvider';
+import { StudioIntroDialog } from '@/components/author/StudioIntroDialog';
 import { Logo } from '@/components/brand/Logo';
 import { Container } from '@/components/layout/Container';
 import { HeaderSearch, MobileSearchRow, MobileSearchToggle } from '@/components/layout/HeaderSearch';
@@ -99,6 +100,7 @@ export function SiteHeader() {
 
 function SignedInActions() {
   const { user } = useAuth();
+  const [introOpen, setIntroOpen] = useState(false);
   const pill =
     'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-label font-semibold whitespace-nowrap transition-colors';
 
@@ -111,15 +113,21 @@ function SignedInActions() {
         </Link>
       )}
       {user?.role === 'READER' && (
-        // The design opens the "StudioIntro" invitation popup here; it is added with the author-request module.
-        <Link
-          to="/become-author"
-          title="Studio dành cho tác giả"
-          className={cn(pill, 'bg-cham-hover text-primary-foreground hover:bg-primary')}
-        >
-          <PenTool className="size-4" strokeWidth={2} aria-hidden />
-          <span className="hidden sm:inline">Studio</span>
-        </Link>
+        // StudioIntro board: readers get the invitation popup instead of the Studio.
+        <>
+          <button
+            type="button"
+            title="Studio dành cho tác giả"
+            aria-haspopup="dialog"
+            onClick={() => setIntroOpen(true)}
+            className={cn(pill, 'bg-cham-hover text-primary-foreground hover:bg-primary')}
+          >
+            <PenTool className="size-4" strokeWidth={2} aria-hidden />
+            <span className="hidden sm:inline">Studio</span>
+            <span className="sr-only sm:hidden">Studio</span>
+          </button>
+          <StudioIntroDialog open={introOpen} onOpenChange={setIntroOpen} />
+        </>
       )}
       {user?.role === 'ADMIN' && (
         <Link to="/admin" className={cn(pill, 'bg-accent text-accent-foreground hover:bg-secondary')}>

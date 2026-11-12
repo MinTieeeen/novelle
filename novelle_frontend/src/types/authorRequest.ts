@@ -100,3 +100,21 @@ export function requestCode(requestId: number): string {
 export function currentRequest(requests: AuthorRequest[]): AuthorRequest | null {
   return requests[0] ?? null;
 }
+
+/** Badge variant per status (DS Badge: pending = warning, approved = success, rejected = critical, cancelled = outline). */
+export const REQUEST_STATUS_VARIANT: Record<AuthorRequestStatus, 'warning' | 'success' | 'critical' | 'outline'> = {
+  PENDING: 'warning',
+  APPROVED: 'success',
+  REJECTED: 'critical',
+  CANCELLED: 'outline',
+};
+
+/**
+ * How long a pending request has waited (AD3 board): "Mới gửi hôm nay", "Chờ 1 ngày", "Chờ 5 ngày", counted in
+ * whole Vietnam calendar days.
+ */
+export function waitingLabel(createdAt: string, now: Date = new Date()): string {
+  const day = (d: Date) => Math.floor((d.getTime() + 7 * 3_600_000) / 86_400_000);
+  const days = day(now) - day(new Date(createdAt));
+  return days <= 0 ? 'Mới gửi hôm nay' : `Chờ ${days} ngày`;
+}

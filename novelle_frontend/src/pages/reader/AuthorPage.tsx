@@ -6,6 +6,7 @@ import { queryKeys } from '@/api/queryKeys';
 import { AppPagination } from '@/components/common/AppPagination';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorResult } from '@/components/common/ErrorResult';
+import { AuthorFollowAction } from '@/components/library/AuthorFollowAction';
 import { AuthorHeader } from '@/components/story/AuthorBlocks';
 import { SortSelect } from '@/components/story/SortSelect';
 import { StoryCard } from '@/components/story/StoryCard';
@@ -97,7 +98,7 @@ export default function AuthorPage() {
 
   return (
     <>
-      <AuthorHeader author={a} />
+      <AuthorHeader author={a} actionSlot={<AuthorFollowAction author={a} />} />
       <section aria-labelledby="author-stories" className="flex flex-col gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 id="author-stories" className="text-title-2 font-semibold">

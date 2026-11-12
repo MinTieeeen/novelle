@@ -105,7 +105,7 @@ function RatingForm({ mine, onSave, onDelete }: Pick<RatingSectionProps, 'mine' 
 
   return (
     <form onSubmit={form.handleSubmit(submit)} noValidate aria-label="Đánh giá của bạn" className="flex flex-col gap-2">
-      <span className="text-label font-semibold">{mine ? 'Đánh giá của bạn' : 'Đánh giá truyện này'}</span>
+      <span className="text-label font-semibold">{mine ? 'Đánh giá của bạn' : 'Đánh giá truyện'}</span>
       <Controller
         control={form.control}
         name="score"
@@ -114,7 +114,7 @@ function RatingForm({ mine, onSave, onDelete }: Pick<RatingSectionProps, 'mine' 
       <Textarea
         rows={2}
         maxLength={REVIEW_MAX + 50}
-        placeholder="Viết vài dòng nhận xét (không bắt buộc)"
+        placeholder="Nhận xét của bạn (tùy chọn)"
         aria-label="Nhận xét"
         aria-invalid={!!form.formState.errors.review || undefined}
         {...form.register('review')}
@@ -134,7 +134,7 @@ function RatingForm({ mine, onSave, onDelete }: Pick<RatingSectionProps, 'mine' 
       <div className="flex flex-wrap items-center gap-4">
         <Button type="submit" size="sm" disabled={pending} className="h-9 px-4 font-semibold">
           {pending && <Loader2 className="animate-spin" strokeWidth={1.75} aria-hidden />}
-          {pending ? 'Đang gửi…' : mine ? 'Cập nhật đánh giá' : 'Gửi đánh giá'}
+          {pending ? 'Đang gửi…' : mine ? 'Cập nhật' : 'Gửi'}
         </Button>
         {mine && onDelete && (
           <button

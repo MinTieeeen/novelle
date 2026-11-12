@@ -13,7 +13,7 @@ const linkButton =
  * "Đang đọc" item of the library (board Library): story card, 3px reading bar, "Đang đọc Chương N · 42%"
  * and "Xoá khỏi lịch sử".
  */
-export function HistoryCard({ item, onRemove, removing }: { item: HistoryItem; onRemove: () => void; removing?: boolean }) {
+export function HistoryCard({ item }: { item: HistoryItem; onRemove: () => void; removing?: boolean }) {
   const pct = Math.round(item.scrollPercent);
   return (
     <div className="flex min-w-0 flex-col gap-2">
@@ -24,21 +24,12 @@ export function HistoryCard({ item, onRemove, removing }: { item: HistoryItem; o
       <span className="text-small text-muted-foreground">
         {item.lastChapter ? (
           <Link to={`/chapters/${item.lastChapter.chapterId}`} className="hover:text-foreground hover:underline">
-            Đang đọc Chương {item.lastChapter.chapterNo} · {pct}%
+            Chương {item.lastChapter.chapterNo} · {pct}%
           </Link>
         ) : (
           'Chương đang đọc đã bị gỡ'
         )}
       </span>
-      <button
-        type="button"
-        onClick={onRemove}
-        disabled={removing}
-        aria-label={`Xoá “${item.story.title}” khỏi lịch sử`}
-        className={cn(linkButton, 'text-small font-normal text-muted-foreground hover:text-foreground')}
-      >
-        Xoá khỏi lịch sử
-      </button>
     </div>
   );
 }

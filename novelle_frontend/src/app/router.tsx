@@ -75,7 +75,8 @@ export const routes: RouteObject[] = [
         ],
       },
       {
-        element: <RequireRole roles={['READER']} />,
+        // AUTHOR too: right after an approval the session turns AUTHOR on this page ("Vào Studio").
+        element: <RequireRole roles={['READER', 'AUTHOR']} />,
         children: [{ path: 'become-author', element: page(<BecomeAuthorPage />) }], // R10
       },
       {
