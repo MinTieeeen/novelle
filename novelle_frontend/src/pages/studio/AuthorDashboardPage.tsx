@@ -12,15 +12,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useDocumentTitle } from '@/hooks/useCatalog';
 import { cn } from '@/lib/utils';
 import { DASHBOARD_RANGES, pctChange, rangeQueries, type DashboardRange } from '@/types/studio';
-import { formatNumber, formatRating } from '@/utils/format';
+import { formatNumber, formatRating, formatSignedPct } from '@/utils/format';
 
 const STALE = 60_000;
-
-/** "+12,4%" / "−3%" with the Vietnamese decimal comma. */
-function signedPct(n: number) {
-  const s = Math.abs(n).toLocaleString('vi-VN', { maximumFractionDigits: 1 });
-  return `${n > 0 ? '+' : n < 0 ? '−' : ''}${s}%`;
-}
 
 /**
  * S5 · Dashboard (/studio/dashboard?range=7d|30d|12m, board StudioDashboard): range buttons; cards Lượt xem
@@ -106,7 +100,7 @@ export default function AuthorDashboardPage() {
           <StatCard
             label={`Lượt xem · ${DASHBOARD_RANGES.find((r) => r.value === range)!.label}`}
             value={formatNumber(views.data.total)}
-            note={change === null ? `Chưa có số liệu ${periodWord} để so` : `${signedPct(change)} so với ${periodWord}`}
+            note={change === null ? `Chưa có số liệu ${periodWord} để so` : `${formatSignedPct(change)} so với ${periodWord}`}
             trend={change === null ? null : change >= 0 ? 'up' : 'down'}
           />
         ) : (

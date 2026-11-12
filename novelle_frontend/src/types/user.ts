@@ -98,13 +98,13 @@ export function normalizeUsername(value: string): string {
   return value.trim().toLowerCase();
 }
 
-const newPassword = z
+export const newPassword = z
   .string()
   .min(PASSWORD_MIN, MSG.passwordInvalid)
   .max(PASSWORD_MAX, MSG.passwordTooLong)
   .refine((v) => utf8Bytes(v) <= PASSWORD_MAX, MSG.passwordTooLong);
 
-const displayName = z.string().trim().min(1, MSG.displayName).max(DISPLAY_NAME_MAX, MSG.displayName);
+export const displayName = z.string().trim().min(1, MSG.displayName).max(DISPLAY_NAME_MAX, MSG.displayName);
 
 export const loginSchema = z.object({
   login: z.string().trim().min(1, MSG.loginRequired).max(255, MSG.loginRequired),

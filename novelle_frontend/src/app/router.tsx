@@ -43,11 +43,13 @@ const LibraryPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/
 const ReaderPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/ReaderPreviewPage')) : null;
 /** Full-screen previews (outside ReaderLayout, like the pages they preview). */
 const StudioPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/StudioPreviewPage')) : null;
+const AdminPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/AdminPreviewPage')) : null;
 const devFullRoutes: RouteObject[] =
-  ReaderPreviewPage && StudioPreviewPage
+  ReaderPreviewPage && StudioPreviewPage && AdminPreviewPage
     ? [
         { path: '/dev/reader', element: page(<ReaderPreviewPage />) },
         { path: '/dev/studio', element: page(<StudioPreviewPage />) },
+        { path: '/dev/admin', element: page(<AdminPreviewPage />) },
       ]
     : [];
 const devRoutes: RouteObject[] =

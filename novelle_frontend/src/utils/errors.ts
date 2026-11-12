@@ -70,3 +70,9 @@ export function rateLimitedMessage(error: unknown): string {
   const seconds = retryAfterSeconds(error);
   return seconds ? `Bạn thao tác quá nhanh. Thử lại sau ${seconds} giây.` : MESSAGES.RATE_LIMITED;
 }
+
+/** True when http.ts already showed this error (401, ban, 403 FORBIDDEN, 429, 5xx, no network): no second toast. */
+export function handledGlobally(error: unknown): boolean {
+  if (!isApiError(error)) return false;
+  return error.status === 401 || error.status === 429 || error.status >= 500 || error.status === 0 || ['ACCOUNT_BANNED', 'FORBIDDEN'].includes(error.code);
+}

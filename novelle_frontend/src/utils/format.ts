@@ -79,4 +79,10 @@ export function initials(name: string | null | undefined): string {
   return letters.toUpperCase();
 }
 
+/** "+12,4%" / "−3%" with the Vietnamese decimal comma (dashboard trends). */
+export function formatSignedPct(n: number): string {
+  const s = Math.abs(n).toLocaleString('vi-VN', { maximumFractionDigits: 1 });
+  return `${n > 0 ? '+' : n < 0 ? '−' : ''}${s}%`;
+}
+
 export { dayjs };

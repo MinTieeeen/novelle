@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getAdminRequests } from '@/api/authorRequests';
 import { queryKeys } from '@/api/queryKeys';
+import { AdminFilterTabs } from '@/components/admin/AdminFilterTabs';
 import { AppPagination } from '@/components/common/AppPagination';
 import { ErrorResult } from '@/components/common/ErrorResult';
 import { UserAvatar } from '@/components/common/UserAvatar';
@@ -11,7 +12,7 @@ import { usePendingRequestCount } from '@/hooks/usePendingRequestCount';
 import { useDocumentTitle } from '@/hooks/useCatalog';
 import { cn } from '@/lib/utils';
 import { REQUEST_STATUSES, REQUEST_STATUS_LABEL, waitingLabel, type AuthorRequestStatus } from '@/types/authorRequest';
-import { formatDate, formatNumber } from '@/utils/format';
+import { formatDate } from '@/utils/format';
 
 const PAGE_SIZE = 20;
 /* Table columns from 1024px (board AdminRequests); written out twice so Tailwind sees both class lists. */
@@ -56,31 +57,15 @@ export default function AuthorRequestsPage() {
     <div className="flex flex-col gap-6">
       <header>
         <h1 className="font-serif text-[28px] leading-9 font-semibold tracking-[-0.01em] sm:text-[32px] sm:leading-[38px]">Yêu cầu tác giả</h1>
-        <p className="mt-1 text-muted-foreground">Duyệt người dùng muốn trở thành tác giả</p>
       </header>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="tablist" aria-label="Trạng thái yêu cầu" className="no-scrollbar inline-flex max-w-full overflow-x-auto rounded-[10px] bg-secondary p-[3px]">
-          {REQUEST_STATUSES.map((s) => {
-            const on = s === status;
-            return (
-              <button
-                key={s}
-                type="button"
-                role="tab"
-                aria-selected={on}
-                onClick={() => go({ status: s })}
-                className={cn(
-                  'h-[34px] shrink-0 rounded-md px-3.5 text-label font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid',
-                  on ? 'bg-card text-primary shadow-[0_1px_2px_rgb(31_33_96/0.12)]' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {REQUEST_STATUS_LABEL[s]}
-                {s === 'PENDING' && pendingCount != null && <span className="num font-normal text-muted-foreground"> {formatNumber(pendingCount)}</span>}
-              </button>
-            );
-          })}
-        </div>
+        <AdminFilterTabs
+          label="Trạng thái yêu cầu"
+          value={status}
+          onChange={(s) => go({ status: s })}
+          tabs={REQUEST_STATUSES.map((s) => ({ value: s, label: REQUEST_STATUS_LABEL[s], count: s === 'PENDING' ? (pendingCount ?? undefined) : undefined }))}
+        />
         <span className="text-label text-muted-foreground">{pending ? 'Cũ nhất trước' : 'Mới nhất trước'}</span>
       </div>
 
