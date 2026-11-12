@@ -42,7 +42,14 @@ const StoryPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/St
 const LibraryPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/LibraryPreviewPage')) : null;
 const ReaderPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/ReaderPreviewPage')) : null;
 /** Full-screen previews (outside ReaderLayout, like the pages they preview). */
-const devFullRoutes: RouteObject[] = ReaderPreviewPage ? [{ path: '/dev/reader', element: page(<ReaderPreviewPage />) }] : [];
+const StudioPreviewPage = import.meta.env.DEV ? lazy(() => import('@/pages/dev/StudioPreviewPage')) : null;
+const devFullRoutes: RouteObject[] =
+  ReaderPreviewPage && StudioPreviewPage
+    ? [
+        { path: '/dev/reader', element: page(<ReaderPreviewPage />) },
+        { path: '/dev/studio', element: page(<StudioPreviewPage />) },
+      ]
+    : [];
 const devRoutes: RouteObject[] =
   DesignSystemPage && AccountPreviewPage && StoryPreviewPage && LibraryPreviewPage
     ? [

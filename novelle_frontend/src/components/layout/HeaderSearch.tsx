@@ -57,8 +57,8 @@ export function HeaderSearch({ className }: { className?: string }) {
           name="q"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Tìm truyện, tác giả…"
-          aria-label="Tìm truyện, tác giả"
+          placeholder="Tìm truyện"
+          aria-label="Tìm truyện"
           maxLength={100}
           enterKeyHint="search"
           className="min-w-0 flex-1 bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
@@ -94,7 +94,7 @@ export function MobileSearchToggle({
       variant="ghost"
       size="icon"
       className="ml-auto sm:hidden"
-      aria-label={open ? 'Đóng tìm kiếm' : 'Tìm truyện, tác giả'}
+      aria-label={open ? 'Đóng tìm kiếm' : 'Tìm truyện'}
       aria-expanded={open}
       onClick={onToggle}
     >
@@ -129,8 +129,8 @@ export function MobileSearchRow({ onClose }: { onClose: () => void }) {
           type="search"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Tìm truyện, tác giả…"
-          aria-label="Tìm truyện, tác giả"
+          placeholder="Tìm truyện"
+          aria-label="Tìm truyện"
           maxLength={100}
           enterKeyHint="search"
           className="min-w-0 flex-1 bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"

@@ -6,7 +6,7 @@ import { SideNav, type SideNavItem } from '@/components/layout/SideNav';
 const ITEMS: SideNavItem[] = [
   // Also active on /studio/stories/** (see SideNav matchPrefix).
   { to: '/studio', label: 'Truyện của tôi', icon: BookOpen, end: true, matchPrefix: '/studio/stories' },
-  { to: '/studio/dashboard', label: 'Thống kê', icon: ChartColumn },
+  { to: '/studio/dashboard', label: 'Dashboard', icon: ChartColumn },
   { to: '/studio/profile', label: 'Hồ sơ tác giả', icon: UserRound },
 ];
 

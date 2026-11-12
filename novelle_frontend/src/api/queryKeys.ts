@@ -1,5 +1,6 @@
 import type { AdminRequestsQuery } from '@/api/authorRequests';
 import type { AuthorStoriesQuery } from '@/api/authors';
+import type { StudioStoriesQuery, ViewsQuery } from '@/api/studio';
 import type { StorySearchParams } from '@/types/storySearch';
 
 /**
@@ -68,6 +69,24 @@ export const queryKeys = {
       list: (query: AdminRequestsQuery) => ['admin', 'author-requests', 'list', query] as const,
       detail: (requestId: number) => ['admin', 'author-requests', 'detail', requestId] as const,
       pendingCount: ['admin', 'author-requests', 'pending-count'] as const,
+    },
+  },
+
+  /* FE6 Studio (AUTHOR): dropped on logout like every personal key */
+  studio: {
+    all: ['studio'] as const,
+    stories: (query: StudioStoriesQuery = {}) => ['studio', 'stories', query] as const,
+    story: (storyId: number) => ['studio', 'story', storyId] as const,
+    volumes: (storyId: number) => ['studio', 'story', storyId, 'volumes'] as const,
+    chapters: (storyId: number) => ['studio', 'story', storyId, 'chapters'] as const,
+    chapter: (chapterId: number) => ['studio', 'chapter', chapterId] as const,
+    revisions: (chapterId: number) => ['studio', 'chapter', chapterId, 'revisions'] as const,
+    profile: ['studio', 'profile'] as const,
+    dashboard: {
+      overview: ['studio', 'dashboard', 'overview'] as const,
+      views: (query: ViewsQuery) => ['studio', 'dashboard', 'views', query] as const,
+      stories: ['studio', 'dashboard', 'stories'] as const,
+      followers: ['studio', 'dashboard', 'followers'] as const,
     },
   },
 } as const;

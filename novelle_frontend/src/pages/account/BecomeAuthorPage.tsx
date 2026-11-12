@@ -36,7 +36,7 @@ function StatusCard({ request, onCancel, cancelling }: { request: AuthorRequest;
         </span>
         <div>
           <h2 id="req-status" className="font-serif text-[20px] leading-[26px] font-semibold">
-            {approved ? 'Yêu cầu đã được duyệt' : 'Đang chờ admin duyệt'}
+            {approved ? 'Yêu cầu đã được duyệt' : 'Đang chờ duyệt'}
           </h2>
           <p className="mt-1 text-muted-foreground">
             {approved ? 'Bạn đã là tác giả. Vào Studio để tạo truyện đầu tiên.' : 'Chúng tôi sẽ xem xét yêu cầu của bạn, thường trong 1–2 ngày.'}
@@ -63,7 +63,6 @@ function StatusCard({ request, onCancel, cancelling }: { request: AuthorRequest;
             <Button variant="outline" onClick={onCancel} disabled={cancelling}>
               Huỷ yêu cầu
             </Button>
-            <span className="text-small text-muted-foreground">Trang tự cập nhật khi bạn quay lại tab này.</span>
           </>
         )}
       </div>
