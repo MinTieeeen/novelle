@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+*.tsbuildinfo
+.env.local
+.env.*.local
+tmp/
+
+# Playwright test account for the live project (gitignored, never print)
+.env.e2e.local
