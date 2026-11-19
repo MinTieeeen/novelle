@@ -1,4 +1,4 @@
-"""The data every indexing scenario works on: dbo.Story grown to 1k / 10k / 50k stories.
+"""The data every indexing scenario works on: dbo.Story cut / grown to 100 / 1.000 stories.
 
 SQL Server  lab.indexing__Story_<n>   clustered primary key on StoryId and NOTHING else, so that each variant
                                       starts from "no index" and creates (then drops) only the indexes it
@@ -22,7 +22,7 @@ from lab.framework.fixtures import ensure_schema, sandbox_name
 
 from . import copies
 
-SIZES = (1_000, 10_000)
+SIZES = (100, 1_000)
 VARIANTS = ("Ft", "W")               # I5 full-text, I7 writes
 REDIS_BATCH = 1_000
 

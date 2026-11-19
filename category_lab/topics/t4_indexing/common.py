@@ -1,4 +1,4 @@
-"""Helpers shared by the indexing scenarios (I2-I5, I7). They connect the plain modules (ddl, plans, redisidx)
+"""Helpers shared by the indexing scenarios (I1-I5, I7). They connect the plain modules (ddl, plans, redisidx)
 to the lab's Ctx.
 
 SQL Server
@@ -13,7 +13,7 @@ Redis
   manual_key(ctx, n, *parts), manual_memory(ctx, n, kind, label)
   create_search(ctx, n, name, schema, filter=None) / drop_search / search_memory   RediSearch indexes
 Both
-  same_ids(ctx, expected, got, what)   check + capture of the difference
+  equal_sets / equal_lists(ctx, expected, got, what)   compare + capture the difference (no check)
 """
 from __future__ import annotations
 
@@ -190,28 +190,25 @@ def ids(ctx: Ctx, sql: str, *params: Any) -> set[int]:
     return set(id_list(ctx, sql, *params))
 
 
-def same_order(ctx: Ctx, expected: list[int], got: list[int], what: str) -> bool:
-    """Check that a page holds exactly the expected stories in the expected order."""
-    ok = expected == got
-    if not ok:
-        ctx.capture(f"diff {what}", {"expected": expected, "got": got})
-    ctx.check(ok, f"{what}: đúng {len(expected)} truyện, đúng thứ tự")
-    return ok
-
-
 def p50(ctx: Ctx, label: str) -> float:
     """server_ms p50 recorded under `label` by the latest bench of this scenario."""
     return next(m.value for m in reversed(ctx.metrics) if m.name == "server_ms" and m.label == label)
 
 
 # --- correctness ---------------------------------------------------------------------------------
-def same_ids(ctx: Ctx, expected: set[int], got: set[int], what: str) -> bool:
-    """Check that a variant returns exactly the reference set; capture the difference when it does not."""
+# Each scenario ends with ONE ctx.check that combines these results; a mismatch is captured for the report.
+def equal_sets(ctx: Ctx, expected: set[int], got: set[int], what: str) -> bool:
     ok = expected == got
     if not ok:
         ctx.capture(f"diff {what}", {"missing": sorted(expected - got)[:50], "extra": sorted(got - expected)[:50],
                                      "expected": len(expected), "got": len(got)})
-    ctx.check(ok, f"{what}: cùng {len(expected)} truyện với kết quả tham chiếu")
+    return ok
+
+
+def equal_lists(ctx: Ctx, expected: list[int], got: list[int], what: str) -> bool:
+    ok = expected == got
+    if not ok:
+        ctx.capture(f"diff {what}", {"expected": expected, "got": got})
     return ok
 
 

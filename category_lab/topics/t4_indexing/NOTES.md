@@ -2,7 +2,7 @@
 
 Người thực hiện: Huỳnh Minh Tiến · Topic `indexing` (`topics/t4_indexing`)
 
-> Trạng thái: **P0–P5 xong (dữ liệu, helper, I2–I5, I7). P1 + P2 đã chạy thử thành công; I1 đã bỏ.** Mục "Kết quả" sẽ điền ở P6.
+> Trạng thái: **Đã rút gọn (19/11/2026): dữ liệu 100 / 1.000 truyện, I1–I5 và I7, mỗi scenario một check. Chưa chạy bản rút gọn.**
 
 ## 1. Mục tiêu
 
@@ -22,7 +22,7 @@ Topic này **thay đổi index**: so sánh có / không có index, các loại i
 
 | Trong phạm vi | Ngoài phạm vi |
 |---|---|
-| I2 index nhiều cột / covering / tipping point, I3 sắp xếp + phân trang, I4 filtered index, I5 full-text, I7 chi phí ghi + dung lượng | I1 tra theo một cột (bỏ ngày 18/11/2026: chạy quá lâu, xem mục 11), I6 lọc nhiều–nhiều (thể loại / tag), I8 tạo index khi đang có tải |
+| I1 tra theo một cột, I2 index nhiều cột / covering, I3 sắp xếp + phân trang, I4 filtered index, I5 full-text, I7 chi phí ghi + dung lượng | I6 lọc nhiều–nhiều (thể loại / tag), I8 tạo index khi đang có tải |
 | Bản sao `dbo.Story` trong schema `lab` | Mọi thay đổi trên `dbo.*` (chỉ đọc) |
 | Thời gian **phía server**, số trang đọc, plan, dung lượng | So độ trễ phía client giữa RDS và Redis |
 
@@ -39,7 +39,7 @@ Giới hạn của Express ảnh hưởng tới topic: không có `ONLINE = ON` 
 
 ## 4. Dữ liệu (P1, đã hiện thực)
 
-### 4.1. SQL Server: `lab.indexing__Story_<n>`, n = 1.000 / 10.000 / 50.000
+### 4.1. SQL Server: `lab.indexing__Story_<n>`, n = 100 / 1.000
 
 - Sinh từ khoảng 150 truyện của `dbo.Story` bằng `sql/dataset_story.sql` (mỗi vòng `INSERT` một bản sao, không
   sort, không xin bộ nhớ). Quy tắc của bản sao thứ k:
@@ -95,66 +95,24 @@ Giới hạn của Express ảnh hưởng tới topic: không có `ONLINE = ON` 
 - Nhãn metric: `<biến thể> · <kích thước>`, ví dụ `covering · 50k`. Metric trùng tên và nhãn ở hai DBMS sẽ được
   report so sánh trực tiếp.
 
-## 6. Kịch bản
+## 6. Kịch bản (bản rút gọn, 19/11/2026)
 
-### I2. Index nhiều cột, covering, tipping point (F2 bộ lọc catalog)
+Dữ liệu: **100 và 1.000 truyện**. Mỗi scenario chỉ giữ các biến thể chính và có **đúng một `ctx.check`**
+(kiểm chứng cơ bản); số đo (thời gian phía server, số trang, plan, bộ nhớ) vẫn được ghi đầy đủ dưới dạng metric.
 
-| | |
-|---|---|
-| Truy vấn | `SELECT StoryId, Title, RatingAvg, ChapterCount FROM S WHERE CompletionStatus = @st AND RatingAvg >= @r` |
-| SQL Server | `no_index` · `single` (`RatingAvg`) · `composite_eq_range` (`CompletionStatus, RatingAvg`) · `composite_range_eq` (`RatingAvg, CompletionStatus`: cột khoảng đứng trước) · `covering` (`CompletionStatus, RatingAvg` `INCLUDE (Title, ChapterCount)`) |
-| Tham số | `picks.catalog_filter`: trạng thái `COMPLETED`, ngưỡng rating chọn để khoảng 2% bảng khớp |
-| Tipping point | Chỉ ở 50k: `sql/i2_tipping.sql` (`WHERE RatingAvg >= ?`, index `IX_Rating` không covering), tỉ lệ dòng khớp 0,2% / 0,5% / 1% / 2% / 5% / 10% / 25% / 50% (`picks.TIP_FRACTIONS`, ngưỡng lấy theo phân bố thật nên tỉ lệ thật đi theo nấc). Mỗi mức đo hai lần: optimizer tự chọn, và ép `WITH (INDEX(IX_Rating))`. Ghi `tipping_pct` = tỉ lệ nhỏ nhất mà optimizer chuyển sang quét bảng. Redis quét cùng các ngưỡng bằng ZSET `by_rating` và `FT.SEARCH`. `FT.SEARCH` chỉ trả tối đa `MAXSEARCHRESULTS` dòng (mặc định 10.000) nên ở mức lớn chỉ kiểm tra tổng số khớp |
-| Redis | `scan` (Lua lọc trên Hash) · `zset_intersect` (ZSET `by_rating` + Set `status:<st>`, giao trong Lua) · `zset_per_status` (ZSET `by_rating:<st>`: tên key là cột "bằng", score là cột "khoảng", tương tự composite index) · `search` (`NUMERIC` + `TAG`) |
-| Dự đoán | Thứ tự `eq, range` seek trên cả hai cột; `range, eq` chỉ seek theo rating và kiểm tra status từng dòng. Covering bỏ Key Lookup. Tipping point ở vài phần trăm. Redis không có optimizer: chi phí tỉ lệ với số phần tử phải duyệt, không có điểm "bỏ index" |
-| Check | Cùng tập id; `covering` không có `Key Lookup` và đọc ít trang hơn `no_index`; `composite_eq_range` (khi được chọn) seek trên cả hai cột; tồn tại tipping point ở 50k |
+| Kịch bản | SQL Server | Redis | Check duy nhất |
+|---|---|---|---|
+| `dataset` | Dựng `Story_100`, `Story_1000`, so fingerprint | Nạp Hash, đếm key, so 3 Hash mẫu | Dữ liệu khớp quy tắc nhân bản |
+| I1 tra theo một cột | `Slug = ?`, `AuthorId = ?`: `no_index` · `nonclustered` | `scan` · `manual_index` (String / Set) · `search_tag` | Mọi biến thể trả đúng truyện cần tìm |
+| I2 index nhiều cột | `Status = ? AND RatingAvg >= ?` (≈5% bảng): `no_index` · `composite` · `covering` | `scan` · `zset_per_status` · `search` (TAG + NUMERIC) | Mọi biến thể trả đúng tập truyện |
+| I3 sắp xếp + phân trang | Trang 0% và 50%: `no_index` (Sort) · `index_offset` · `index_keyset` | `zset_rank` · `zset_keyset` · `search_sortby` | Mọi trang đúng 20 truyện, đúng thứ tự (FT.SEARCH: đúng tập) |
+| I4 filtered index | Trang 1: `full_index` · `filtered` (+ dung lượng index) | `zset_all_filter` · `zset_public` · `search_filter` (`FT.CREATE … FILTER`) | Các biến thể cho cùng trang 1 |
+| I5 full-text | Từ phổ biến + gõ không dấu: `LIKE '%w%'` · `CONTAINSTABLE` (nếu RDS cho phép) | `scan` · `search` · `search_unaccented` (field bỏ dấu) | SQL: LIKE tìm thấy mọi truyện chứa đúng từ khoá; Redis: `search_unaccented` recall 100% |
+| I7 chi phí index | 1.000 truyện: `INSERT`, `UPDATE RatingAvg` với 0 và 3 index (`RatingAvg`, `AuthorId`, unique `Slug`) | `manual_0` · `manual_3` (MULTI) · `search_3` | SQL: INSERT đọc nhiều trang hơn khi có 3 index; Redis: ZSET `by_rating` vẫn khớp Hash sau các lệnh ghi |
 
-### I3. Sắp xếp và phân trang (F1 truyện mới cập nhật)
-
-| | |
-|---|---|
-| Truy vấn | Truyện công khai **đã có chương**, mới nhất trước, trang 20 truyện (`sql/i3_page_offset.sql`): `WHERE PublishStatus = 'PUBLISHED' AND IsDeleted = 0 AND LastChapterAt IS NOT NULL ORDER BY LastChapterAt DESC, StoryId DESC OFFSET ? ROWS FETCH NEXT 20 ROWS ONLY`. Bỏ truyện chưa có chương để keyset không phải xử lý `NULL` |
-| Độ sâu | Trang 1, và trang ở 10% / 50% / 90% số truyện công khai |
-| SQL Server | `no_index` (Sort; chỉ đo các trang cần sort tối đa 10.000 dòng, vì RDS rất ít bộ nhớ cho sort) · `index_offset` (`PublishStatus, IsDeleted, LastChapterAt DESC, StoryId DESC` `INCLUDE (Title, ChapterCount)`) · `index_keyset` (cùng index, `WHERE … AND (LastChapterAt < @t OR (LastChapterAt = @t AND StoryId < @id))`) |
-| Redis | `lua/page_fetch.lua`: `zset_rank` (ZSET `public:by_last`, `ZRANGE off off+19 REV`) · `zset_keyset` (`ZRANGE score -inf BYSCORE REV LIMIT`, bỏ các dòng đã hiện cùng score) · `search_sortby` (`FT.SEARCH … SORTBY LastChapterAt DESC LIMIT off 20`; trang có offset + 20 > `MAXSEARCHRESULTS` không lấy được, ghi metric `unreachable`). Member ZSET là id đệm 8 chữ số để thứ tự khi bằng điểm trùng với `StoryId DESC` |
-| Dự đoán | Có index đúng thứ tự thì không còn Sort. `OFFSET` đọc và bỏ đi `@o` dòng nên trang sâu chậm dần; keyset gần như không đổi. ZSET lấy theo hạng là O(log N + 20) nên không phụ thuộc độ sâu; `FT.SEARCH` thì tăng theo offset |
-| Check | Mỗi trang đúng 20 truyện, đúng thứ tự (SQL, ZSET); `FT.SEARCH` đúng tập truyện (SORTBY chỉ một khoá nên có thể đảo thứ tự khi bằng điểm); `no_index` có Sort, `index_offset` không; keyset đọc ≤ 60 dòng ở mọi độ sâu |
-
-### I4. Filtered index
-
-| | |
-|---|---|
-| Truy vấn | Trang 1 của I3 (`sql/i3_page_offset.sql`, trạng thái viết bằng hằng số như `vw_PublicStory`); bản có tham số: `sql/i4_page_param.sql` (tham số được `CAST` về kiểu của cột, nếu không `N'PUBLISHED'` cũng không khớp điều kiện lọc) |
-| SQL Server | `full_index` (index của I3) · `filtered` (`LastChapterAt DESC, StoryId DESC` `INCLUDE (Title, ChapterCount)` `WHERE PublishStatus = 'PUBLISHED' AND IsDeleted = 0`, cùng điều kiện lọc với `IX_Story_Public_LastChapter` của web) · `filtered_param` (trạng thái là tham số) · `filtered_param_recompile` (thêm `OPTION (RECOMPILE)`; thời gian đo gồm cả compile mỗi lần chạy) |
-| Redis | `zset_all_filter` (`lua/zset_filter_page.lua`: ZSET mọi truyện, xem từng truyện tới khi đủ 20 truyện công khai) · `zset_public` (ZSET chỉ gồm truyện trong danh sách; ứng dụng phải `ZADD` / `ZREM` khi đăng / ẩn) · `search_tags` (RediSearch, trạng thái là `TAG`) · `search_filter` (`FT.CREATE … FILTER "@PublishStatus=='PUBLISHED' && @IsDeleted=='0'"`, chỉ index `LastChapterAt`) |
-| Đo | Thêm số trang và số dòng của từng index (SQL); `MEMORY USAGE` / `FT.INFO` (Redis) |
-| Dự đoán | Filtered nhỏ hơn đúng theo tỉ lệ truyện công khai (`public_share` của scenario `dataset`). Có tham số thì optimizer không dùng được filtered index vì plan phải đúng cho mọi giá trị; `RECOMPILE` thì dùng lại được |
-| Check | Cùng trang ở mọi biến thể; `filtered` dùng filtered index và index chỉ chứa đúng số truyện công khai, nhỏ hơn `full_index`; `filtered_param` không dùng, `filtered_param_recompile` dùng lại được (ghi kèm cảnh báo `UnmatchedIndexes` nếu plan báo). Redis: ZSET công khai nhỏ hơn ZSET mọi truyện; index có `FILTER` ít document hơn |
-
-### I5. Tìm kiếm toàn văn (F2 ô tìm kiếm)
-
-| | |
-|---|---|
-| Từ khoá | `textsearch.choose_terms` trên các truyện gốc: từ có dấu phổ biến nhất trong khoảng 2–10% truyện (≥ 3 chữ cái, không có `đ` vì `đ` là một chữ cái riêng, không phải dấu), một từ chỉ có ở một truyện, và từ phổ biến gõ **không dấu** |
-| Tham chiếu | `textsearch.reference`: truyện có một từ của Title / Description **bắt đầu bằng** từ khoá, sau khi bỏ dấu và hạ chữ thường (điều người đọc mong đợi). Mỗi biến thể được chấm `recall_pct` và `precision_pct` so với tập này |
-| SQL Server (trên `StoryFt_<n>`) | `like` (`sql/i5_like.sql`, cả 3 từ khoá) · `title_prefix` (`Title LIKE N'w%'` + `IX_Title`, chỉ từ phổ biến) · `fulltext` (`sql/i5_fulltext.sql`: `CONTAINSTABLE(…, (Title, Description), '"w*"')`; index tạo bằng `sql/i5_fulltext_create.sql` trong `ftc_Novelle`, word breaker lcid 1066 nếu có, ngược lại 0; đo thời gian tạo + populate và dung lượng fragment) |
-| Redis | `scan` (`lua/scan_text.lua`: `SCAN` + `string.find`, chỉ hạ chữ thường ASCII) · `search` (`FT.SEARCH 'w*'`, `TEXT NOSTEM` trên `Title`, `Description`, `STOPWORDS 0`) · `search_unaccented` (field `SearchText` = bản bỏ dấu do ứng dụng ghi thêm vào Hash; teardown xoá field này) |
-| Độ tươi | Ghi một truyện mới chứa một từ duy nhất, rồi đo thời gian tới khi tìm thấy: full-text (`CHANGE_TRACKING AUTO`, cập nhật **bất đồng bộ**) so với RediSearch (index **ngay trong lệnh `HSET`**) |
-| Đo | server_ms, số kết quả, độ phủ (recall) so với tập tham chiếu tính trên client (so khớp sau khi bỏ dấu, không phân biệt hoa thường), độ tươi (ms), dung lượng index (`FULLTEXTCATALOGPROPERTY` / `FT.INFO`) |
-| Dự đoán | `LIKE '%w%'` quét cả bảng gồm cả LOB, nhưng tìm được không dấu nhờ collation `AI`. Full-text nhanh nhưng có độ trễ khi cập nhật. RediSearch nhanh, tìm thấy ngay, nhưng **không bỏ dấu tiếng Việt** nếu không thêm field riêng. `string.find` trong Lua không hiểu chữ hoa / dấu tiếng Việt |
-| Check | Full-text và RediSearch tìm được từ phổ biến có dấu; `search_unaccented` có recall ≥ 99%; truyện mới tìm thấy (SQL: trong 120 s; Redis: ngay lần tìm đầu). Recall / precision của các biến thể còn lại chỉ ghi lại, không bắt buộc. `STOPWORDS 0` vì từ bỏ dấu có thể trùng stopword tiếng Anh (`thế` → `the`) |
-
-### I7. Chi phí ghi và dung lượng
-
-| | |
-|---|---|
-| Bộ index (SQL, trên `StoryW_<n>`) | 0: chỉ PK · 1: + `RatingAvg` · 3: + `AuthorId`, unique `Slug` · 6: + `ViewCount`, `(CompletionStatus, RatingAvg) INCLUDE (...)`, filtered `LastChapterAt` (gần đúng bộ index của web) |
-| Lệnh ghi | `sql/i7_insert.sql` (truyện mới, id `MAX + 1`, slug có id nên không vi phạm `UX_Slug`) · `sql/i7_update_rating.sql` (`RatingAvg` +0,01, quay về 1,00 sau 4,99: là khoá của 2 index trong bộ 6) · `sql/i7_update_views.sql` (`ViewCount + 1`, như `sp_FlushViews`) · `sql/i7_update_description.sql` (đổi ký tự đầu, không index phụ nào chứa `Description`). Truyện đích: `picks.write_target`, truyện công khai có mô tả |
-| Cách đo | Dung lượng ở 1k / 10k / 50k (tạo đủ 6 index rồi đọc `dm_db_partition_stats`). Thời gian ghi chỉ ở 50k: mỗi mẫu chạy lệnh **50 lần** trong một batch (`WRITE_INNER`), vì một lệnh ghi một dòng nhanh hơn bước ~1 ms của `SYSDATETIME` trên RDS; các lệnh được viết để lặp lại được, dòng đã chèn bị xoá sau mỗi bộ index. `inspect_sql` cho số trang mà lệnh ghi đọc (gồm cả việc cập nhật index) |
-| Redis | `manual_0` (chỉ `HSET` / `HINCRBY`) · `manual_1/3/6` (thêm `ZADD` / `SADD` / `SET` của `redisidx.SET_KINDS`, gói trong `MULTI` khi có cấu trúc phụ) · `search_1/3/6` (lệnh như `manual_0`, nhưng có index RediSearch 1 / 3 / 6 field theo `redisidx.SET_SCHEMA`). Metric `commands` = số lệnh mỗi lần ghi |
-| Đo | server_ms của từng lệnh ghi; số trang và MB của từng index ở mỗi kích thước; bộ nhớ của cấu trúc phụ và `FT.INFO` |
-| Dự đoán | Thời gian ghi tăng theo số index bị chạm. `UPDATE Description` gần như không đổi theo số index. Ở Redis, index tự quản lý thêm số lệnh; RediSearch thêm thời gian ngay trong `HSET` |
-| Check | Dung lượng: bộ 6 > bộ 1 > 0 (cả hai DBMS). SQL: `update_rating` và `insert` đọc nhiều trang hơn khi có 6 index; `update_description` gần như không đổi (≤ 2 trang). Redis: `insert` với RediSearch 6 field và với 6 cấu trúc tự quản lý đều chậm hơn `HSET` một mình |
+Đã bỏ so với spec ban đầu: kích thước 10k / 50k, tipping point, `composite_range_eq`, heap / RID Lookup,
+filtered index với tham số, độ tươi của full-text, bộ 1 / 6 index và các lệnh `update_views` /
+`update_description` của I7.
 
 ## 7. Kế hoạch hiện thực
 

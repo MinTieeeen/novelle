@@ -123,18 +123,27 @@ def key_id(key: str) -> int:
     return int(str(key).rsplit(":", 1)[1])
 
 
-def parse_search(reply: list[Any]) -> tuple[int, list[tuple[str, dict[str, str]]]]:
-    """FT.SEARCH reply (RESP2: total, key, [field, value, ...], key, ...) -> (total, [(key, fields)]).
-    With NOCONTENT the reply has no field lists."""
+def parse_search(reply: Any) -> tuple[int, list[tuple[str, dict[str, str]]]]:
+    """FT.SEARCH -> (total, [(key, fields)]). Accepts the RESP2 list (total, key, [field, value, ...], key, ...;
+    with NOCONTENT no field lists) and the RESP3 dict ({"total_results", "results": [{"id",
+    "extra_attributes"}]})."""
+    if isinstance(reply, dict):
+        reply = {str(_text(k)): v for k, v in reply.items()}
+        docs = []
+        for doc in reply.get("results") or []:
+            doc = {str(_text(k)): v for k, v in doc.items()}
+            attrs = doc.get("extra_attributes") or {}
+            docs.append((str(_text(doc.get("id"))), {str(_text(k)): _text(v) for k, v in attrs.items()}))
+        return int(reply.get("total_results", len(docs))), docs
     total = int(reply[0])
     docs: list[tuple[str, dict[str, str]]] = []
     i = 1
     while i < len(reply):
-        key = reply[i]
+        key = _text(reply[i])
         fields: dict[str, str] = {}
         if i + 1 < len(reply) and isinstance(reply[i + 1], list):
             flat = reply[i + 1]
-            fields = {str(flat[j]): flat[j + 1] for j in range(0, len(flat) - 1, 2)}
+            fields = {str(_text(flat[j])): _text(flat[j + 1]) for j in range(0, len(flat) - 1, 2)}
             i += 2
         else:
             i += 1
@@ -153,21 +162,30 @@ def command_args(entry: Entry, key: str) -> list[Any]:
 
 
 # --- FT.INFO --------------------------------------------------------------------------------------
-def parse_ft_info(reply: list[Any]) -> dict[str, Any]:
-    """FT.INFO (RESP2 flat list key, value, key, value ...) -> dict; numeric strings become floats."""
-    out: dict[str, Any] = {}
-    for i in range(0, len(reply) - 1, 2):
-        key = reply[i].decode() if isinstance(reply[i], bytes) else str(reply[i])
-        value = reply[i + 1]
-        if isinstance(value, bytes):
-            value = value.decode()
-        if isinstance(value, str):
-            try:
-                value = float(value)
-            except ValueError:
-                pass
-        out[key] = value
-    return out
+def _text(value: Any) -> Any:
+    return value.decode() if isinstance(value, bytes) else value
+
+
+def _number(value: Any) -> Any:
+    value = _text(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return value
+
+
+def parse_ft_info(reply: Any) -> dict[str, Any]:
+    """FT.INFO -> dict with numeric values as floats. Accepts both shapes redis-py can return: a dict (redis-py 8
+    parses it, or RESP3) or the RESP2 flat list key, value, key, value ..."""
+    if isinstance(reply, dict):
+        pairs = reply.items()
+    else:
+        pairs = ((reply[i], reply[i + 1]) for i in range(0, len(reply) - 1, 2))
+    return {str(_text(k)): _number(v) for k, v in pairs}
 
 
 # Fields of FT.INFO that measure the index's memory (MB); total_index_memory_sz_mb exists from RediSearch 2.8.

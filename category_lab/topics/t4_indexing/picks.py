@@ -36,18 +36,7 @@ def threshold(values: list[Decimal], fraction: float) -> tuple[Decimal, int]:
     return t, sum(1 for v in ordered if v >= t)
 
 
-def thresholds(values: list[Decimal], fractions: tuple[float, ...]) -> list[tuple[Decimal, int]]:
-    """threshold() for several target shares, without repeating the same t (ascending share)."""
-    out: list[tuple[Decimal, int]] = []
-    for f in sorted(fractions):
-        t, count = threshold(values, f)
-        if not out or out[-1][0] != t:
-            out.append((t, count))
-    return out
-
-
-CATALOG_SHARE = 0.02                                       # I2: the filter keeps ~2% of the table
-TIP_FRACTIONS = (0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.25, 0.5)   # I2: shares swept for the tipping point
+CATALOG_SHARE = 0.05                                       # I2: the filter keeps ~5% of the table
 
 
 def catalog_filter(rows: list[dict[str, Any]], share: float = CATALOG_SHARE) -> tuple[str, Decimal, set[int]]:

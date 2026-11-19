@@ -92,3 +92,13 @@ def test_parse_ft_info_and_memory():
     info["total_index_memory_sz_mb"] = 2.0
     assert redisidx.index_memory_mb(info) == 2.0
     assert not redisidx.indexing_done({"indexing": 1.0, "percent_indexed": 0.4})
+
+
+def test_parsers_accept_the_dict_replies_of_redis_py_8():
+    info = redisidx.parse_ft_info({"index_name": "x", "num_docs": 100, "indexing": 0, "percent_indexed": "1",
+                                   "inverted_sz_mb": "0.5", "attributes": [["identifier", "Slug"]]})
+    assert info["num_docs"] == 100.0 and redisidx.indexing_done(info) and redisidx.index_memory_mb(info) == 0.5
+    reply = {"attributes": [], "format": "STRING", "total_results": 2, "warning": [],
+             "results": [{"id": "k:1", "extra_attributes": {"StoryId": "1"}, "values": []},
+                         {"id": "k:2", "extra_attributes": {}, "values": []}]}
+    assert redisidx.parse_search(reply) == (2, [("k:1", {"StoryId": "1"}), ("k:2", {})])

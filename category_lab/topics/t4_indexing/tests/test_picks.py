@@ -27,11 +27,6 @@ def test_threshold_counts_ties():
         picks.threshold([], 0.5)
 
 
-def test_thresholds_drop_repeated_values():
-    values = [D("4.50")] * 8 + [D("3.00")] * 2
-    assert picks.thresholds(values, (0.5, 0.1, 0.9)) == [(D("4.50"), 8), (D("3.00"), 10)]
-
-
 def test_catalog_filter_keeps_about_the_share():
     rows = [{"StoryId": i, "CompletionStatus": "COMPLETED" if i % 2 else "ONGOING",
              "RatingAvg": D(str(round(1 + (i % 40) / 10, 2)))} for i in range(1, 1001)]
