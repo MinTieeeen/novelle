@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.AuthorMapper">
+
+    <!--
+        Join Author ⋈ User, plus an aggregate subquery (CROSS APPLY, always one row) over the author's
+        public stories only (decision D4: drafts and hidden stories are not counted, unlike vw_AuthorStats).
+        RatingAvg is weighted by RatingCount: SUM(avg × count) / SUM(count).
+        User.Status is not checked: a banned author's page stays visible (decision D3).
+    -->
+    <select id="findPublicProfile" resultType="com.novelle.model.AuthorProfile">
+        SELECT a.UserId    AS AuthorId,
+               a.PenName,
+               a.Bio,
+               u.AvatarUrl,
+               a.IsVerified,
+               a.FollowerCount,
+               a.CreatedAt AS AuthorSince,
+               st.StoryCount, st.ChapterCount, st.ViewCount, st.RatingCount, st.RatingAvg
+        FROM dbo.Author a
+        JOIN dbo.[User] u ON u.UserId = a.UserId
+        CROSS APPLY (
+            SELECT COUNT(*)                                                  AS StoryCount,
+                   COALESCE(SUM(CAST(p.ChapterCount AS BIGINT)), 0)          AS ChapterCount,
+                   COALESCE(SUM(p.ViewCount), 0)                             AS ViewCount,
+                   COALESCE(SUM(CAST(p.RatingCount AS BIGINT)), 0)           AS RatingCount,
+                   COALESCE(CAST(SUM(CAST(p.RatingAvg AS DECIMAL(18,4)) * p.RatingCount)
+                                 / NULLIF(SUM(CAST(p.RatingCount AS DECIMAL(18,4))), 0)
+                                 AS DECIMAL(3,2)), 0)                        AS RatingAvg
+            FROM dbo.vw_PublicStory p
+            WHERE p.AuthorId = a.UserId
+        ) st
+        WHERE a.UserId = #{authorId}
+    </select>
+
+    <select id="existsAuthor" resultType="boolean">
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.Author WHERE UserId = #{authorId}) THEN 1 ELSE 0 END
+    </select>
+</mapper>

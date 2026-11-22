@@ -180,7 +180,8 @@ BEGIN
             THROW 50001, N'Chapter is already published.', 1;
 
         UPDATE dbo.Chapter
-        SET Status = 'PUBLISHED', PublishedAt = @Now, UpdatedAt = @Now
+        -- ScheduledAt is cleared: a chapter published early must not keep its old schedule (module-studio D2)
+        SET Status = 'PUBLISHED', PublishedAt = @Now, ScheduledAt = NULL, UpdatedAt = @Now
         WHERE ChapterId = @ChapterId;
 
         EXEC dbo.sp_RecalcStoryStats @StoryId = @StoryId;
@@ -219,7 +220,7 @@ BEGIN
         WHERE c.Status = 'SCHEDULED' AND c.IsDeleted = 0 AND c.ScheduledAt <= @Now;
 
         UPDATE c
-        SET Status = 'PUBLISHED', PublishedAt = @Now, UpdatedAt = @Now
+        SET Status = 'PUBLISHED', PublishedAt = @Now, ScheduledAt = NULL, UpdatedAt = @Now
         FROM dbo.Chapter c
         JOIN @Due d ON d.ChapterId = c.ChapterId;
 

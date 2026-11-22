@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.RevisionMapper">
+
+    <!-- join ChapterRevision ⋈ Author (who made the edit); UQ_ChapterRevision_Chapter_No serves the lookup -->
+    <sql id="revisionColumns">
+        r.RevisionNo, r.Title, r.WordCount, r.EditedBy AS EditedById, a.PenName AS EditedByPenName, r.CreatedAt
+    </sql>
+
+    <!-- flushCache: a save in the same transaction adds a revision through the trigger -->
+    <select id="findRevisions" resultType="com.novelle.model.ChapterRevision" flushCache="true">
+        SELECT <include refid="revisionColumns"/>
+        FROM dbo.ChapterRevision r
+        JOIN dbo.Author a ON a.UserId = r.EditedBy
+        WHERE r.ChapterId = #{chapterId}
+        ORDER BY r.RevisionNo DESC
+    </select>
+
+    <select id="findRevision" resultType="com.novelle.model.ChapterRevision" flushCache="true">
+        SELECT <include refid="revisionColumns"/>, r.Content
+        FROM dbo.ChapterRevision r
+        JOIN dbo.Author a ON a.UserId = r.EditedBy
+        WHERE r.ChapterId = #{chapterId} AND r.RevisionNo = #{revisionNo}
+    </select>
+</mapper>

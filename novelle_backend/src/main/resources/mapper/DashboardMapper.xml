@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.DashboardMapper">
+
+    <select id="overview" resultType="com.novelle.model.AuthorDashboardStats">
+        SELECT StoryCount, PublishedStoryCount, ChapterCount, WordCount, ViewCount,
+               FollowerCount, StoryFollowCount, RatingCount, RatingAvg
+        FROM dbo.vw_AuthorStats
+        WHERE AuthorId = #{authorId}
+    </select>
+
+    <!-- the period expression appears in SELECT and GROUP BY; <choose> instead of ${} (no SQL text from input) -->
+    <sql id="period">
+        <choose>
+            <when test="monthly">DATEFROMPARTS(YEAR(d.ViewDate), MONTH(d.ViewDate), 1)</when>
+            <otherwise>d.ViewDate</otherwise>
+        </choose>
+    </sql>
+
+    <!-- aggregate + join: StoryViewDaily ⋈ Story (owner, not deleted), GROUP BY day or month -->
+    <select id="viewSeries" resultType="com.novelle.model.ViewPoint">
+        SELECT <include refid="period"/> AS Period, SUM(CAST(d.Views AS BIGINT)) AS Views
+        FROM dbo.StoryViewDaily d
+        JOIN dbo.Story s ON s.StoryId = d.StoryId
+        WHERE s.AuthorId = #{authorId} AND s.IsDeleted = 0
+          AND d.ViewDate BETWEEN #{from} AND #{to}
+          <if test="storyId != null">AND d.StoryId = #{storyId}</if>
+        GROUP BY <include refid="period"/>
+        ORDER BY Period
+    </select>
+
+    <resultMap id="StoryStatsMap" type="com.novelle.model.StoryStats"
+               extends="com.novelle.mapper.StudioStoryMapper.StudioStoryCardMap" autoMapping="true"/>
+
+    <!--
+      subquery: a story is "above my average" when it rates higher than the average RatingAvg of all my rated
+      stories, itself included (correlated on the author; stories without ratings are left out of the average). OUTER APPLY sums the last 30 days of views
+      through the primary key (StoryId, ViewDate) of StoryViewDaily.
+    -->
+    <select id="storyStats" resultMap="StoryStatsMap">
+        SELECT <include refid="com.novelle.mapper.StudioStoryMapper.cardColumns"/>,
+               COALESCE(v.Views, 0) AS Views30d,
+               CASE WHEN s.RatingCount > 0
+                         AND s.RatingAvg > (SELECT AVG(s2.RatingAvg)
+                                            FROM dbo.Story s2
+                                            WHERE s2.AuthorId = s.AuthorId AND s2.IsDeleted = 0
+                                              AND s2.RatingCount > 0)
+                    THEN 1 ELSE 0 END AS AboveMyAverage
+        <include refid="com.novelle.mapper.StudioStoryMapper.cardFrom"/>
+        OUTER APPLY (SELECT SUM(CAST(d.Views AS BIGINT)) AS Views
+                     FROM dbo.StoryViewDaily d
+                     WHERE d.StoryId = s.StoryId AND d.ViewDate &gt;= #{since}) v
+        WHERE s.AuthorId = #{authorId} AND s.IsDeleted = 0
+        ORDER BY s.ViewCount DESC, s.StoryId
+    </select>
+
+    <!-- aggregate in a subquery: followers who started in the window (IX_AuthorFollow_Author) -->
+    <select id="followerSummary" resultType="com.novelle.model.FollowerSummary">
+        SELECT a.FollowerCount,
+               (SELECT COUNT(*) FROM dbo.AuthorFollow f
+                WHERE f.AuthorId = a.UserId AND f.CreatedAt &gt;= #{since}) AS NewFollowers
+        FROM dbo.Author a
+        WHERE a.UserId = #{authorId}
+    </select>
+
+    <!-- join AuthorFollow ⋈ [User] -->
+    <select id="recentFollowers" resultType="com.novelle.model.FollowerRow">
+        SELECT TOP (#{limit}) u.UserId, u.Username, u.DisplayName, u.AvatarUrl, f.CreatedAt AS FollowedAt
+        FROM dbo.AuthorFollow f
+        JOIN dbo.[User] u ON u.UserId = f.FollowerId
+        WHERE f.AuthorId = #{authorId}
+        ORDER BY f.CreatedAt DESC, f.FollowerId DESC
+    </select>
+
+    <select id="topFollowedStories" resultType="com.novelle.model.StoryFollowRow">
+        SELECT TOP (#{limit}) StoryId, Title, Slug, FollowCount
+        FROM dbo.Story
+        WHERE AuthorId = #{authorId} AND IsDeleted = 0 AND FollowCount > 0
+        ORDER BY FollowCount DESC, StoryId
+    </select>
+</mapper>

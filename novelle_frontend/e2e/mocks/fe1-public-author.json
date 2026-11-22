@@ -1,0 +1,10 @@
+{
+  "GET /users/moclan": {
+    "username": "moclan",
+    "displayName": "Mộc Lan",
+    "bio": "Người viết chậm, đọc nhiều. Thích truyện sông nước.",
+    "role": "AUTHOR",
+    "createdAt": "2026-06-12T02:00:00Z",
+    "author": { "authorId": 12, "penName": "Mộc Lan", "bio": "Viết về sông nước miền Trung.", "isVerified": true, "followerCount": 1280 }
+  }
+}

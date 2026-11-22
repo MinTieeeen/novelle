@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.ChapterMapper">
+
+    <resultMap id="ChapterNavMap" type="com.novelle.model.ChapterNav" autoMapping="true">
+        <id property="chapterId" column="ChapterId"/>
+        <association property="author" javaType="com.novelle.model.AuthorRef"
+                     columnPrefix="Author_" autoMapping="true"/>
+        <association property="volume" javaType="com.novelle.model.VolumeRef"
+                     columnPrefix="Volume_" notNullColumn="VolumeId" autoMapping="true"/>
+    </resultMap>
+
+    <!--
+      Runs on every GET /api/chapters/{id} (module-reading D3), so hiding or deleting a story or chapter takes
+      effect even while cache:chapter:{id} still exists.
+      join: Chapter ⋈ vw_PublicStory (RB3) ⟕ Volume; many conditions: id + status + not deleted;
+      subquery: two correlated TOP (1) lookups of the neighbouring public chapters (IX_Chapter_Story_No).
+    -->
+    <select id="findPublicNav" resultMap="ChapterNavMap">
+        SELECT c.ChapterId, c.ChapterNo, c.ViewCount, c.StoryId,
+               s.Slug       AS StorySlug,
+               s.Title      AS StoryTitle,
+               s.AuthorId   AS Author_AuthorId,
+               s.AuthorName AS Author_PenName,
+               v.VolumeId   AS Volume_VolumeId,
+               v.VolumeNo   AS Volume_VolumeNo,
+               v.Title      AS Volume_Title,
+               (SELECT TOP (1) p.ChapterId
+                FROM dbo.Chapter p
+                WHERE p.StoryId = c.StoryId AND p.ChapterNo &lt; c.ChapterNo
+                  AND p.Status = 'PUBLISHED' AND p.IsDeleted = 0
+                ORDER BY p.ChapterNo DESC) AS PrevChapterId,
+               (SELECT TOP (1) n.ChapterId
+                FROM dbo.Chapter n
+                WHERE n.StoryId = c.StoryId AND n.ChapterNo &gt; c.ChapterNo
+                  AND n.Status = 'PUBLISHED' AND n.IsDeleted = 0
+                ORDER BY n.ChapterNo ASC) AS NextChapterId
+        FROM dbo.Chapter c
+        JOIN dbo.vw_PublicStory s ON s.StoryId = c.StoryId
+        LEFT JOIN dbo.Volume v    ON v.VolumeId = c.VolumeId
+        WHERE c.ChapterId = #{chapterId}
+          AND c.Status = 'PUBLISHED'
+          AND c.IsDeleted = 0
+    </select>
+
+    <!-- 1 condition (primary key); the NVARCHAR(MAX) column is read only on a cache miss -->
+    <select id="findContent" resultType="com.novelle.model.ChapterContent">
+        SELECT Title, Content, WordCount, PublishedAt
+        FROM dbo.Chapter
+        WHERE ChapterId = #{chapterId}
+    </select>
+
+    <select id="findPublicChapterStory" resultType="java.lang.Integer">
+        SELECT c.StoryId
+        FROM dbo.Chapter c
+        JOIN dbo.vw_PublicStory s ON s.StoryId = c.StoryId
+        WHERE c.ChapterId = #{chapterId}
+          AND c.Status = 'PUBLISHED'
+          AND c.IsDeleted = 0
+    </select>
+</mapper>

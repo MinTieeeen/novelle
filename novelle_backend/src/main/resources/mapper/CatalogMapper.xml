@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.CatalogMapper">
+
+    <!--
+        Aggregate: public stories per genre. StoryGenre rows of drafts / hidden / deleted stories find no row
+        in vw_PublicStory, so COUNT(s.StoryId) skips them; genres without stories get 0.
+    -->
+    <select id="findGenresWithCount" resultType="com.novelle.model.Genre">
+        SELECT g.GenreId, g.Name, g.Slug, g.Description,
+               COUNT(s.StoryId) AS StoryCount
+        FROM dbo.Genre g
+        LEFT JOIN dbo.StoryGenre sg    ON sg.GenreId = g.GenreId
+        LEFT JOIN dbo.vw_PublicStory s ON s.StoryId  = sg.StoryId
+        GROUP BY g.GenreId, g.Name, g.Slug, g.Description, g.SortOrder
+        ORDER BY g.SortOrder, g.GenreId
+    </select>
+
+    <!-- prefixes are escaped LIKE patterns ending with %; Name compares tone-insensitively (DB collation) -->
+    <select id="findTags" resultType="com.novelle.model.Tag">
+        SELECT TOP (#{limit}) TagId, Name, Slug, UsageCount
+        FROM dbo.Tag
+        <where>
+            <if test="namePrefix != null">
+                (Name LIKE #{namePrefix} ESCAPE '\' OR Slug LIKE #{slugPrefix} ESCAPE '\')
+            </if>
+        </where>
+        ORDER BY UsageCount DESC, Name
+    </select>
+
+    <!-- one condition for the "completed" block (CompletionStatus); ${orderBy} comes only from StorySort -->
+    <select id="findHomeBlock" resultMap="com.novelle.mapper.StorySearchMapper.StoryCardMap">
+        SELECT TOP (#{limit}) <include refid="com.novelle.mapper.StorySearchMapper.cardColumns"/>
+        <include refid="com.novelle.mapper.StorySearchMapper.cardFrom"/>
+        <where>
+            <if test="completedOnly">
+                AND s.CompletionStatus = 'COMPLETED'
+            </if>
+            <if test="minRatings != null">
+                AND s.RatingCount &gt;= #{minRatings}
+            </if>
+        </where>
+        ORDER BY ${orderBy}
+    </select>
+</mapper>

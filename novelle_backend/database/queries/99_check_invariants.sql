@@ -96,6 +96,14 @@ FROM (
     JOIN dbo.Volume v ON v.VolumeId = c.VolumeId
     WHERE v.StoryId <> c.StoryId
 
+    /* ---- RB11: a published chapter keeps no schedule (sp_PublishChapter / sp_PublishScheduled clear it) ---- */
+
+    UNION ALL
+    SELECT 'Chapter.PublishedWithSchedule', CAST(c.ChapterId AS VARCHAR(40)),
+           CONCAT('ScheduledAt=', CONVERT(VARCHAR(30), c.ScheduledAt, 121))
+    FROM dbo.Chapter c
+    WHERE c.Status = 'PUBLISHED' AND c.ScheduledAt IS NOT NULL
+
     /* ---- RB5: the last-read chapter belongs to the story ---- */
 
     UNION ALL
@@ -126,6 +134,12 @@ FROM (
     UNION ALL
     SELECT 'RB16.AdminAuthorRequest', CAST(r.RequestId AS VARCHAR(40)), 'ADMIN submitted an author request'
     FROM dbo.AuthorRequest r JOIN dbo.[User] u ON u.UserId = r.UserId WHERE u.Role = 'ADMIN'
+
+    /* ---- RB16: the system always keeps at least one ACTIVE administrator ---- */
+
+    UNION ALL
+    SELECT 'RB16.ActiveAdmins', 'system', 'no ACTIVE ADMIN left'
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.[User] WHERE Role = 'ADMIN' AND Status = 'ACTIVE')
 
     /* ---- RB6: 1-3 genres, exactly one primary, at most 10 tags ---- */
 

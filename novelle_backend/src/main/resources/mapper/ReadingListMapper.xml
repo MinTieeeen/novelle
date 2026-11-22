@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.ReadingListMapper">
+
+    <sql id="listColumns">
+        l.ListId, l.UserId, l.Name, l.Description, l.IsPublic, l.ItemCount, l.CreatedAt, l.UpdatedAt
+    </sql>
+
+    <!-- ===================== lists ===================== -->
+
+    <!--
+      many conditions (ListId AND owner): the ownership check and the row lock in one statement (D5).
+      flushCache / useCache: never answered from the MyBatis session cache, otherwise the lock would not be taken.
+    -->
+    <select id="lockOwned" resultType="com.novelle.model.ReadingList" flushCache="true" useCache="false">
+        SELECT <include refid="listColumns"/>
+        FROM dbo.ReadingList l WITH (UPDLOCK, ROWLOCK)
+        WHERE l.ListId = #{listId} AND l.UserId = #{userId}
+    </select>
+
+    <resultMap id="ListWithOwnerMap" type="com.novelle.model.ReadingList" autoMapping="true">
+        <id property="listId" column="ListId"/>
+        <association property="owner" javaType="com.novelle.model.UserRef"
+                     columnPrefix="Owner_" autoMapping="true"/>
+    </resultMap>
+
+    <!-- join ReadingList ⋈ [User]; visible = public, or owned by the viewer (D4: otherwise "not found") -->
+    <select id="findVisible" resultMap="ListWithOwnerMap">
+        SELECT <include refid="listColumns"/>,
+               u.UserId AS Owner_UserId, u.Username AS Owner_Username, u.AvatarUrl AS Owner_AvatarUrl
+        FROM dbo.ReadingList l
+        JOIN dbo.[User] u ON u.UserId = l.UserId
+        WHERE l.ListId = #{listId}
+          AND (l.IsPublic = 1 <if test="viewerId != null">OR l.UserId = #{viewerId}</if>)
+    </select>
+
+    <!-- 1 condition; the UNIQUE (UserId, Name) index serves the lookup -->
+    <select id="listMine" resultType="com.novelle.model.ReadingList">
+        SELECT <include refid="listColumns"/>
+        FROM dbo.ReadingList l
+        WHERE l.UserId = #{userId}
+        ORDER BY l.UpdatedAt DESC, l.ListId DESC
+    </select>
+
+    <select id="existsActiveUser" resultType="boolean">
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.[User] WHERE Username = #{username} AND Status = 'ACTIVE')
+                    THEN 1 ELSE 0 END
+    </select>
+
+    <!-- subquery resolves the username to its id -->
+    <select id="listPublicByUsername" resultType="com.novelle.model.ReadingList">
+        SELECT <include refid="listColumns"/>
+        FROM dbo.ReadingList l
+        WHERE l.IsPublic = 1
+          AND l.UserId = (SELECT u.UserId FROM dbo.[User] u WHERE u.Username = #{username} AND u.Status = 'ACTIVE')
+        ORDER BY l.UpdatedAt DESC, l.ListId DESC
+    </select>
+
+    <select id="countMine" resultType="int">
+        SELECT COUNT(*) FROM dbo.ReadingList WHERE UserId = #{userId}
+    </select>
+
+    <insert id="insert" parameterType="com.novelle.model.ReadingList"
+            useGeneratedKeys="true" keyProperty="listId" keyColumn="ListId">
+        INSERT dbo.ReadingList (UserId, Name, Description, IsPublic)
+        VALUES (#{userId}, #{name}, #{description}, #{isPublic})
+    </insert>
+
+    <update id="update">
+        UPDATE dbo.ReadingList
+        <set>
+            <if test="name != null">Name = #{name},</if>
+            <if test="descriptionSet">Description = #{description, jdbcType=NVARCHAR},</if>
+            <if test="isPublic != null">IsPublic = #{isPublic},</if>
+            UpdatedAt = SYSUTCDATETIME()
+        </set>
+        WHERE ListId = #{listId}
+    </update>
+
+    <delete id="delete">
+        DELETE dbo.ReadingList WHERE ListId = #{listId} AND UserId = #{userId}
+    </delete>
+
+    <!-- ===================== items ===================== -->
+
+    <delete id="deleteItems">
+        DELETE dbo.ReadingListItem WHERE ListId = #{listId}
+    </delete>
+
+    <!--
+      insert from a subquery: the aggregate without GROUP BY returns one row even for an empty list (MAX = NULL → 1).
+      Safe against two concurrent appends only because the caller holds the UPDLOCK of lockOwned (D5).
+    -->
+    <insert id="insertItem">
+        INSERT dbo.ReadingListItem (ListId, StoryId, OrderNo, Note)
+        SELECT #{listId}, #{storyId}, ISNULL(MAX(i.OrderNo), 0) + 1, #{note, jdbcType=NVARCHAR}
+        FROM dbo.ReadingListItem i
+        WHERE i.ListId = #{listId}
+    </insert>
+
+    <delete id="deleteItem">
+        DELETE dbo.ReadingListItem WHERE ListId = #{listId} AND StoryId = #{storyId}
+    </delete>
+
+    <update id="adjustItemCount">
+        UPDATE dbo.ReadingList
+        SET ItemCount = ItemCount + #{delta}, UpdatedAt = SYSUTCDATETIME()
+        WHERE ListId = #{listId}
+    </update>
+
+    <update id="touch">
+        UPDATE dbo.ReadingList SET UpdatedAt = SYSUTCDATETIME() WHERE ListId = #{listId}
+    </update>
+
+    <resultMap id="EntryMap" type="com.novelle.model.ReadingListEntry"
+               extends="com.novelle.mapper.StorySearchMapper.StoryCardMap" autoMapping="true"/>
+
+    <sql id="entrySelect">
+        SELECT <include refid="com.novelle.mapper.StorySearchMapper.cardColumns"/>,
+               i.OrderNo, i.Note, i.AddedAt
+        <include refid="com.novelle.mapper.StorySearchMapper.cardFrom"/>
+        JOIN dbo.ReadingListItem i ON i.StoryId = s.StoryId
+    </sql>
+
+    <select id="findEntry" resultMap="EntryMap">
+        <include refid="entrySelect"/>
+        WHERE i.ListId = #{listId} AND i.StoryId = #{storyId}
+    </select>
+
+    <!-- join ReadingListItem ⋈ vw_PublicStory (D3: hidden stories are not shown) -->
+    <select id="pageEntries" resultMap="EntryMap">
+        <include refid="entrySelect"/>
+        WHERE i.ListId = #{listId}
+        ORDER BY i.OrderNo, i.StoryId
+        OFFSET #{offset} ROWS FETCH NEXT #{size} ROWS ONLY
+    </select>
+
+    <select id="countEntries" resultType="long">
+        SELECT COUNT(*)
+        FROM dbo.ReadingListItem i
+        JOIN dbo.vw_PublicStory s ON s.StoryId = i.StoryId
+        WHERE i.ListId = #{listId}
+    </select>
+
+    <!-- every row; IsPublic from a correlated subquery on the view -->
+    <select id="itemKeys" resultType="com.novelle.model.ListItemKey">
+        SELECT i.StoryId, i.OrderNo,
+               CASE WHEN EXISTS (SELECT 1 FROM dbo.vw_PublicStory p WHERE p.StoryId = i.StoryId)
+                    THEN 1 ELSE 0 END AS IsPublic
+        FROM dbo.ReadingListItem i
+        WHERE i.ListId = #{listId}
+        ORDER BY i.OrderNo, i.StoryId
+    </select>
+
+    <!--
+      Set-based UPDATE from a table value constructor: one statement for the whole new order, so the list is
+      never seen half reordered. ≤ 500 rows × 2 parameters stays under SQL Server's 2,100-parameter limit.
+    -->
+    <update id="reorder">
+        UPDATE i
+        SET OrderNo = v.OrderNo
+        FROM dbo.ReadingListItem i
+        JOIN (VALUES
+            <foreach collection="storyIds" item="storyId" index="idx" separator=",">
+                (#{storyId}, #{idx} + 1)
+            </foreach>
+        ) AS v (StoryId, OrderNo) ON v.StoryId = i.StoryId
+        WHERE i.ListId = #{listId}
+    </update>
+</mapper>

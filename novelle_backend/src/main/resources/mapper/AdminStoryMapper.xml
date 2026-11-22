@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.AdminStoryMapper">
+
+    <resultMap id="AdminStoryMap" type="com.novelle.model.AdminStory"
+               extends="com.novelle.mapper.StudioStoryMapper.StudioStoryCardMap" autoMapping="true">
+        <association property="author" javaType="com.novelle.model.AuthorRef"
+                     columnPrefix="Author_" autoMapping="true"/>
+    </resultMap>
+
+    <!-- studio card columns (alias s = dbo.Story) + join Story ⋈ Author -->
+    <sql id="storySelect">
+        SELECT <include refid="com.novelle.mapper.StudioStoryMapper.cardColumns"/>,
+               s.HiddenReason,
+               a.UserId     AS Author_AuthorId,
+               a.PenName    AS Author_PenName,
+               a.IsVerified AS Author_IsVerified
+        <include refid="com.novelle.mapper.StudioStoryMapper.cardFrom"/>
+        JOIN dbo.Author a ON a.UserId = s.AuthorId
+    </sql>
+
+    <!-- many conditions, each optional except "not deleted" -->
+    <sql id="storyWhere">
+        WHERE s.IsDeleted = 0
+        <if test="publishStatus != null">AND s.PublishStatus = #{publishStatus}</if>
+        <if test="likePattern != null">AND s.Title LIKE #{likePattern}</if>
+        <if test="authorId != null">AND s.AuthorId = #{authorId}</if>
+    </sql>
+
+    <select id="pageStories" resultMap="AdminStoryMap">
+        <include refid="storySelect"/>
+        <include refid="storyWhere"/>
+        ORDER BY s.UpdatedAt DESC, s.StoryId DESC
+        OFFSET #{offset} ROWS FETCH NEXT #{size} ROWS ONLY
+    </select>
+
+    <select id="countStories" resultType="long">
+        SELECT COUNT(*) FROM dbo.Story s
+        <include refid="storyWhere"/>
+    </select>
+
+    <select id="findStory" resultMap="AdminStoryMap" flushCache="true">
+        <include refid="storySelect"/>
+        WHERE s.StoryId = #{storyId} AND s.IsDeleted = 0
+    </select>
+
+    <!--
+      State change with its precondition in the WHERE (D7). UpdatedAt moves too, so the story rises in C1 and an
+      edit form the author still has open gets 409 STALE_DATA (module-studio D4) and reloads with the reason.
+    -->
+    <update id="hide">
+        UPDATE dbo.Story
+        SET PublishStatus = 'HIDDEN', HiddenReason = #{reason}, UpdatedAt = SYSUTCDATETIME()
+        WHERE StoryId = #{storyId} AND IsDeleted = 0 AND PublishStatus = 'PUBLISHED'
+    </update>
+
+    <update id="unhide">
+        UPDATE dbo.Story
+        SET PublishStatus = 'PUBLISHED', HiddenReason = NULL, UpdatedAt = SYSUTCDATETIME()
+        WHERE StoryId = #{storyId} AND IsDeleted = 0 AND PublishStatus = 'HIDDEN'
+    </update>
+</mapper>

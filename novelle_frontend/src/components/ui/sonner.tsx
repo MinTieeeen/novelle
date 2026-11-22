@@ -1,0 +1,50 @@
+import { CircleAlertIcon, CircleCheckIcon, InfoIcon, Loader2Icon, TriangleAlertIcon } from "lucide-react"
+import { Toaster as Sonner, type ToasterProps } from "sonner"
+
+/*
+ * Novelle toast: surface-raised card, line border, shadow-raise, radius-lg, bottom-right, close button.
+ * Icon colour carries the status (success / critical / warning); the message repeats the button verb.
+ */
+const Toaster = ({ ...props }: ToasterProps) => {
+  return (
+    <Sonner
+      theme="light"
+      position="bottom-right"
+      closeButton
+      // A modal Dialog/Sheet sets pointer-events:none on <body>; without this the toast inherits it and a
+      // click on its close button falls through to the dialog overlay and closes the dialog.
+      className="toaster group pointer-events-auto"
+      icons={{
+        success: <CircleCheckIcon className="size-5 text-success" strokeWidth={1.75} />,
+        info: <InfoIcon className="size-5 text-primary" strokeWidth={1.75} />,
+        warning: <TriangleAlertIcon className="size-5 text-warning" strokeWidth={1.75} />,
+        error: <CircleAlertIcon className="size-5 text-destructive" strokeWidth={1.75} />,
+        loading: <Loader2Icon className="size-5 animate-spin text-primary" strokeWidth={1.75} />,
+      }}
+      toastOptions={{
+        classNames: {
+          toast:
+            "!pointer-events-auto !rounded-lg !border-border !bg-card !py-3.5 !pr-12 !pl-4 !text-foreground !shadow-raise font-sans",
+          // Toast board: close button on the right, vertically centred, 32px, muted. Sonner positions it
+          // with `transform`; reset it so only our `translate` applies.
+          closeButton:
+            "!pointer-events-auto !top-1/2 !right-2 !left-auto !size-8 !transform-none !-translate-y-1/2 !translate-x-0 !rounded-md !border-0 !bg-transparent !text-muted-foreground hover:!bg-secondary hover:!text-foreground [&_svg]:!size-4",
+          title: "!text-label !font-normal",
+          description: "!text-small !text-muted-foreground",
+          actionButton: "!h-8 !rounded-md !bg-accent !px-2.5 !text-small !font-semibold !text-accent-foreground",
+        },
+      }}
+      style={
+        {
+          "--normal-bg": "var(--card)",
+          "--normal-text": "var(--card-foreground)",
+          "--normal-border": "var(--border)",
+          "--border-radius": "var(--radius-lg)",
+        } as React.CSSProperties
+      }
+      {...props}
+    />
+  )
+}
+
+export { Toaster }

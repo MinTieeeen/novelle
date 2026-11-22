@@ -51,7 +51,7 @@
         <dependency>
             <groupId>com.microsoft.sqlserver</groupId>
             <artifactId>mssql-jdbc</artifactId>
-            <scope>runtime</scope>
+            <!-- compile scope: SQLServerDataTable / setStructured for the table-valued parameter of sp_FlushViews -->
         </dependency>
 
         <!-- Redis (Lettuce) and sessions stored in Redis -->

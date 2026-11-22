@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.StudioChapterMapper">
+
+    <!-- alias c = dbo.Chapter; never Content (NFR-M6-12) -->
+    <sql id="chapterColumns">
+        c.ChapterId, c.StoryId, c.VolumeId, c.ChapterNo, c.Title, c.WordCount, c.Status,
+        c.ScheduledAt, c.PublishedAt, c.ViewCount, c.CreatedAt, c.UpdatedAt
+    </sql>
+
+    <!-- IX_Chapter_Story_No (StoryId, ChapterNo) -->
+    <select id="listByStory" resultType="com.novelle.model.StudioChapter">
+        SELECT <include refid="chapterColumns"/>
+        FROM dbo.Chapter c
+        WHERE c.StoryId = #{storyId} AND c.IsDeleted = 0
+        ORDER BY c.ChapterNo
+    </select>
+
+    <!--
+      join Chapter ⋈ Story, many conditions: the chapter and its story exist, are not deleted, and the story is mine.
+      flushCache: the editor reads the row again right after a save / publish in the same transaction.
+    -->
+    <select id="findOwned" resultType="com.novelle.model.StudioChapter" flushCache="true">
+        SELECT <include refid="chapterColumns"/><if test="withContent">, c.Content</if>
+        FROM dbo.Chapter c
+        JOIN dbo.Story s ON s.StoryId = c.StoryId
+        WHERE c.ChapterId = #{chapterId} AND c.IsDeleted = 0
+          AND s.AuthorId = #{authorId} AND s.IsDeleted = 0
+    </select>
+
+    <!--
+      Insert from a subquery (D7): the next number over every row of the story, deleted chapters included.
+      UPDLOCK + HOLDLOCK take a key-range lock on IX_Chapter_Story_No for this story until commit, so two
+      concurrent inserts get 13 and 14 instead of both reading 12 and one failing on the unique index.
+      Status, counters and timestamps take their defaults (DRAFT, 0, now).
+    -->
+    <insert id="insert" parameterType="com.novelle.model.StudioChapter"
+            useGeneratedKeys="true" keyProperty="chapterId" keyColumn="ChapterId">
+        INSERT dbo.Chapter (StoryId, VolumeId, ChapterNo, Title, Content, WordCount)
+        SELECT #{storyId}, #{volumeId, jdbcType=INTEGER}, ISNULL(MAX(x.ChapterNo), 0) + 1,
+               #{title}, #{content}, #{wordCount}
+        FROM dbo.Chapter x WITH (UPDLOCK, HOLDLOCK)
+        WHERE x.StoryId = #{storyId}
+    </insert>
+
+    <!--
+      Optimistic lock on UpdatedAt (D4): sp_FlushViews adds ViewCount (and so changes RowVer) every minute but
+      leaves UpdatedAt alone. Title and Content are always in the SET list; trg_Chapter_Revision compares the
+      values in a binary collation and stores the old version only when one of them really changed.
+    -->
+    <update id="updateContent">
+        UPDATE dbo.Chapter
+        SET Title     = #{title},
+            Content   = #{content},
+            WordCount = #{wordCount},
+            VolumeId  = #{volumeId, jdbcType=INTEGER},
+            UpdatedAt = SYSUTCDATETIME()
+        WHERE ChapterId = #{chapterId} AND IsDeleted = 0 AND UpdatedAt = #{version}
+    </update>
+
+    <!-- the state precondition is in the WHERE, so a job publishing the chapter meanwhile makes this a 0-row update -->
+    <update id="schedule">
+        UPDATE dbo.Chapter
+        SET Status = 'SCHEDULED', ScheduledAt = #{scheduledAt}, UpdatedAt = SYSUTCDATETIME()
+        WHERE ChapterId = #{chapterId} AND IsDeleted = 0
+          AND Status IN ('DRAFT', 'SCHEDULED') AND WordCount > 0
+    </update>
+
+    <update id="unschedule">
+        UPDATE dbo.Chapter
+        SET Status = 'DRAFT', ScheduledAt = NULL, UpdatedAt = SYSUTCDATETIME()
+        WHERE ChapterId = #{chapterId} AND IsDeleted = 0 AND Status = 'SCHEDULED'
+    </update>
+
+    <update id="softDelete">
+        UPDATE dbo.Chapter
+        SET IsDeleted = 1, UpdatedAt = SYSUTCDATETIME()
+        WHERE ChapterId = #{chapterId} AND IsDeleted = 0
+    </update>
+
+    <update id="publish" statementType="CALLABLE">
+        {call dbo.sp_PublishChapter(#{chapterId, jdbcType=BIGINT}, #{userId, jdbcType=INTEGER})}
+    </update>
+
+    <update id="recalcStoryStats" statementType="CALLABLE">
+        {call dbo.sp_RecalcStoryStats(#{storyId, jdbcType=INTEGER})}
+    </update>
+
+    <!-- the procedure ends with SELECT @Published AS PublishedCount; flushCache: never a cached answer -->
+    <select id="publishScheduled" statementType="CALLABLE" resultType="java.lang.Integer" flushCache="true">
+        {call dbo.sp_PublishScheduled()}
+    </select>
+
+    <!-- database clock, rounded like a DATETIME2(3) column; the job compares it with PublishedAt set by the procedure -->
+    <select id="dbNow" resultType="java.time.LocalDateTime" flushCache="true">
+        SELECT CAST(SYSUTCDATETIME() AS DATETIME2(3))
+    </select>
+
+    <select id="storiesPublishedSince" resultType="int" flushCache="true">
+        SELECT DISTINCT StoryId
+        FROM dbo.Chapter
+        WHERE Status = 'PUBLISHED' AND IsDeleted = 0 AND PublishedAt &gt;= #{since}
+    </select>
+</mapper>

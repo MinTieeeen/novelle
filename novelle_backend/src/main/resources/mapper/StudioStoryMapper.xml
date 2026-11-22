@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.StudioStoryMapper">
+
+    <!-- ===== Studio story card, shared with DashboardMapper (refid / resultMap with the full namespace) ===== -->
+
+    <resultMap id="StudioStoryCardMap" type="com.novelle.model.StudioStoryCard" autoMapping="true">
+        <id property="storyId" column="StoryId"/>
+        <association property="primaryGenre" javaType="com.novelle.model.GenreRef"
+                     columnPrefix="Genre_" notNullColumn="GenreId" autoMapping="true"/>
+    </resultMap>
+
+    <!-- alias s = dbo.Story; DraftChapterCount = chapters not yet public (DRAFT or SCHEDULED), subquery -->
+    <sql id="cardColumns">
+        s.StoryId, s.Slug, s.Title, s.CoverUrl, s.PublishStatus, s.CompletionStatus, s.AgeRating,
+        s.ChapterCount, s.ViewCount, s.FollowCount, s.RatingAvg, s.RatingCount, s.LastChapterAt, s.UpdatedAt,
+        (SELECT COUNT(*) FROM dbo.Chapter c
+         WHERE c.StoryId = s.StoryId AND c.IsDeleted = 0 AND c.Status &lt;&gt; 'PUBLISHED') AS DraftChapterCount,
+        g.GenreId AS Genre_GenreId,
+        g.Name    AS Genre_Name,
+        g.Slug    AS Genre_Slug
+    </sql>
+
+    <!-- primary genre through the filtered unique index UX_StoryGenre_Primary: at most one row per story -->
+    <sql id="cardFrom">
+        FROM dbo.Story s
+        LEFT JOIN dbo.StoryGenre pg ON pg.StoryId = s.StoryId AND pg.IsPrimary = 1
+        LEFT JOIN dbo.Genre g       ON g.GenreId  = pg.GenreId
+    </sql>
+
+    <!-- many conditions: owner AND not deleted [AND status]; IX_Story_Author -->
+    <sql id="mineWhere">
+        WHERE s.AuthorId = #{authorId} AND s.IsDeleted = 0
+        <if test="status != null">AND s.PublishStatus = #{status}</if>
+    </sql>
+
+    <select id="pageMine" resultMap="StudioStoryCardMap">
+        SELECT <include refid="cardColumns"/>
+        <include refid="cardFrom"/>
+        <include refid="mineWhere"/>
+        ORDER BY s.UpdatedAt DESC, s.StoryId DESC
+        OFFSET #{offset} ROWS FETCH NEXT #{size} ROWS ONLY
+    </select>
+
+    <select id="countMine" resultType="long">
+        SELECT COUNT(*) FROM dbo.Story s
+        <include refid="mineWhere"/>
+    </select>
+
+    <select id="findOwned" resultType="com.novelle.model.StudioStory">
+        SELECT StoryId, AuthorId, Slug, Title, Description, CoverUrl, AgeRating, CompletionStatus,
+               PublishStatus, HiddenReason, ChapterCount, WordCount, ViewCount, FollowCount,
+               RatingAvg, RatingCount, LastChapterAt, PublishedAt, CreatedAt, UpdatedAt
+        FROM dbo.Story
+        WHERE StoryId = #{storyId} AND AuthorId = #{authorId} AND IsDeleted = 0
+    </select>
+
+    <!-- slugs only hold a-z, 0-9 and '-', so the LIKE pattern has no wildcard to escape -->
+    <select id="slugsLike" resultType="string">
+        SELECT Slug FROM dbo.Story WHERE Slug = #{base} OR Slug LIKE #{likePattern}
+    </select>
+
+    <!-- PublishStatus, counters, IsDeleted and timestamps take their column defaults (DRAFT, 0, now) -->
+    <insert id="insert" parameterType="com.novelle.model.StudioStory"
+            useGeneratedKeys="true" keyProperty="storyId" keyColumn="StoryId">
+        INSERT dbo.Story (AuthorId, Title, Slug, Description, CoverUrl, AgeRating, CompletionStatus)
+        VALUES (#{authorId}, #{title}, #{slug}, #{description, jdbcType=NVARCHAR}, #{coverUrl, jdbcType=VARCHAR},
+                #{ageRating}, #{completionStatus})
+    </insert>
+
+    <!--
+      Optimistic lock on UpdatedAt, not RowVer (module-studio D4): sp_FlushViews and the follow / rating triggers
+      change RowVer every minute but never UpdatedAt.
+    -->
+    <update id="updateMeta">
+        UPDATE dbo.Story
+        <set>
+            <if test="title != null">Title = #{title},</if>
+            <if test="descriptionSet">Description = #{description, jdbcType=NVARCHAR},</if>
+            <if test="coverUrlSet">CoverUrl = #{coverUrl, jdbcType=VARCHAR},</if>
+            <if test="ageRating != null">AgeRating = #{ageRating},</if>
+            <if test="completionStatus != null">CompletionStatus = #{completionStatus},</if>
+            UpdatedAt = SYSUTCDATETIME()
+        </set>
+        WHERE StoryId = #{storyId} AND AuthorId = #{authorId} AND IsDeleted = 0 AND UpdatedAt = #{version}
+    </update>
+
+    <update id="touch">
+        UPDATE dbo.Story SET UpdatedAt = SYSUTCDATETIME() WHERE StoryId = #{storyId}
+    </update>
+
+    <select id="countGenres" resultType="int">
+        SELECT COUNT(*) FROM dbo.Genre
+        WHERE GenreId IN <foreach collection="genreIds" item="g" open="(" separator="," close=")">#{g}</foreach>
+    </select>
+
+    <delete id="deleteGenres">
+        DELETE dbo.StoryGenre WHERE StoryId = #{storyId}
+    </delete>
+
+    <insert id="insertGenres">
+        INSERT dbo.StoryGenre (StoryId, GenreId, IsPrimary)
+        VALUES
+        <foreach collection="genreIds" item="g" separator=",">
+            (#{storyId}, #{g}, <choose><when test="g == primaryGenreId">1</when><otherwise>0</otherwise></choose>)
+        </foreach>
+    </insert>
+
+    <!--
+      State change with its preconditions in the WHERE (atomic, no read-then-write race). ChapterCount counts
+      published, not deleted chapters (sp_RecalcStoryStats), so > 0 means "has a public chapter" (D1).
+    -->
+    <update id="publish">
+        UPDATE dbo.Story
+        SET PublishStatus = 'PUBLISHED',
+            PublishedAt   = COALESCE(PublishedAt, SYSUTCDATETIME()),
+            UpdatedAt     = SYSUTCDATETIME()
+        WHERE StoryId = #{storyId} AND AuthorId = #{authorId} AND IsDeleted = 0
+          AND PublishStatus = 'DRAFT' AND ChapterCount > 0
+    </update>
+
+    <update id="unpublish">
+        UPDATE dbo.Story
+        SET PublishStatus = 'DRAFT', UpdatedAt = SYSUTCDATETIME()
+        WHERE StoryId = #{storyId} AND AuthorId = #{authorId} AND IsDeleted = 0 AND PublishStatus = 'PUBLISHED'
+    </update>
+
+    <update id="deleteStory" statementType="CALLABLE">
+        {call dbo.sp_DeleteStory(#{storyId, jdbcType=INTEGER}, #{userId, jdbcType=INTEGER})}
+    </update>
+
+    <select id="storyIdsOfAuthor" resultType="int">
+        SELECT StoryId FROM dbo.Story WHERE AuthorId = #{authorId} AND IsDeleted = 0
+    </select>
+</mapper>

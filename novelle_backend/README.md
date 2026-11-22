@@ -55,105 +55,70 @@ The full, always-current endpoint list is served by Swagger UI (see [Section 4.6
 
 ## 3. Project structure
 
-The code is organized **by feature**. Each feature package contains its own `controller`, `service`, `mapper`, `dto` and `model` sub-packages, and its SQL lives in a matching folder under `resources/mapper/`. One functional area can then be read and owned end to end.
+The code is organized **by layer**. Each layer package (`controller`, `service`, `mapper`, `model`, `dto`) is flat and holds the classes of every feature; class names carry the feature (`AuthController`, `StoryService`, `ChapterMapper`). Technical building blocks that are not a layer (Redis cache, rate limiting, view counters, jobs, security plumbing, MyBatis type handlers) live under `infrastructure/`. All MyBatis XML files are in `resources/mapper/`, one per mapper interface with the same name.
 
 ```
 novelle_backend/
 ├─ pom.xml
 ├─ mvnw, mvnw.cmd                    Maven wrapper
-├─ docker-compose.yml                Local SQL Server 2019 + Redis Stack
 ├─ database/
-│  ├─ bootstrap/                     Run once with an admin login
-│  │  ├─ 00_create_database.sql      CREATE DATABASE NovelleDB COLLATE Vietnamese_100_CI_AI
-│  │  └─ 01_create_logins_users.sql  novelle_migrator / novelle_app / novelle_readonly
-│  ├─ schema/                        Full schema, run in file-name order
-│  │  ├─ 01_tables.sql               18 tables: PK, FK, UQ, CHECK, DEFAULT
-│  │  ├─ 02_indexes.sql              Regular and filtered indexes
-│  │  ├─ 03_fulltext.sql             Full-text catalog and index (runs outside a transaction)
-│  │  ├─ 04_views.sql                vw_PublicStory, vw_AuthorStats
-│  │  ├─ 05_procedures.sql           sp_ApproveAuthorRequest, sp_RejectAuthorRequest, sp_PublishChapter,
-│  │  │                              sp_PublishScheduled, sp_DeleteStory, sp_FlushViews (+ table type)
-│  │  ├─ 06_triggers.sql             trg_Rating, trg_Follow, trg_AuthorFollow, trg_Chapter_Revision, …
-│  │  └─ 07_reference_data.sql       20 genres
-│  ├─ queries/                       01_insert.sql … 08_aggregate.sql, 99_check_invariants.sql
-│  └─ demo/                          Per-topic DBMS demo scripts (tagged "RDS OK" or "LOCAL ONLY")
+│  ├─ bootstrap/                     Database and logins, run once as the RDS master user
+│  ├─ schema/                        01_tables … 07_reference_data, run in file-name order
+│  ├─ queries/                       99_check_invariants.sql
+│  └─ seed/                          10_corpus … 90_finalize, 99_reset
 ├─ scripts/
-│  ├─ db-bootstrap.ps1 / .sh         Runs database/bootstrap (local Docker or RDS through the tunnel)
-│  ├─ db-apply-schema.ps1 / .sh      Runs database/schema/*.sql in order; --reset drops and recreates the database first
-│  └─ aws-tunnel.ps1 / .sh           Opens the SSM tunnels to RDS and Redis
+│  └─ db-seed.ps1 / .sh              Loads (or resets) the mock data
 └─ src/
    ├─ main/
    │  ├─ java/com/novelle/
    │  │  ├─ NovelleApplication.java
-   │  │  ├─ config/                  Security, Redis, Session, CORS, scheduling, OpenAPI, MyBatis
-   │  │  ├─ common/                  Error model, exception handler, paging, current-user helper,
-   │  │  │                           HTML sanitizer, MyBatis type handlers
-   │  │  ├─ auth/                    Register, login, logout, current user (/api/auth, /api/me)
-   │  │  ├─ user/                    AppUser model and profile updates
-   │  │  ├─ catalog/                 Genres and tags (read side, cached)
-   │  │  ├─ story/                   F1–F3: home, search, story detail, author page
-   │  │  ├─ reading/                 F4: chapter reading, reading progress
-   │  │  ├─ library/                 F5: history, story and author follows, reading lists
-   │  │  ├─ rating/                  F6: ratings and reviews
-   │  │  ├─ authorrequest/           F7: submit, view, cancel; approval logic shared with admin
-   │  │  ├─ studio/                  F8–F10: stories, volumes, chapters, drafts, revisions, dashboard
-   │  │  ├─ admin/                   F11–F13: users, author requests, moderation, genres and tags, statistics
-   │  │  ├─ cache/                   CacheService (cache-aside) and cache key definitions
-   │  │  ├─ views/                   ViewCounterService (Redis INCR) and ViewFlushJob (sp_FlushViews)
-   │  │  ├─ ratelimit/               @RateLimited annotation and Redis-backed interceptor
-   │  │  ├─ jobs/                    ScheduledPublishJob (sp_PublishScheduled)
-   │  │  └─ seed/                    MockDataGenerator, active only with the "seed" profile
+   │  │  ├─ config/                  Security, Redis, Session, CORS, scheduling, OpenAPI, MyBatis, Web MVC
+   │  │  ├─ controller/              REST controllers (AuthController, MeController, StoryController, …)
+   │  │  ├─ service/                 Business rules and transactions (AuthService, StoryService, …)
+   │  │  ├─ mapper/                  MyBatis @Mapper interfaces (UserMapper, StoryMapper, …)
+   │  │  ├─ model/                   Row objects (AppUser, Story, Chapter, …)
+   │  │  ├─ dto/                     Request and response records
+   │  │  ├─ exception/               ApiError, ApiException, ErrorCode, GlobalExceptionHandler
+   │  │  └─ infrastructure/
+   │  │     ├─ security/             SessionUser, CurrentUser, UserStatusFilter, JSON 401/403 handlers
+   │  │     ├─ mybatis/              Type handlers (ROWVERSION ↔ Base64, TVP for sp_FlushViews)
+   │  │     ├─ cache/                CacheService (cache-aside) and CacheKeys
+   │  │     ├─ ratelimit/            @RateLimited annotation and Redis-backed interceptor
+   │  │     ├─ views/                ViewCounterService (Redis INCR) and ViewFlushJob (sp_FlushViews)
+   │  │     ├─ jobs/                 ScheduledPublisher + ScheduledPublishJob (sp_PublishScheduled)
+   │  │     └─ html/                 HtmlSanitizer (jsoup allowlist), WordCounter, SlugGenerator
    │  └─ resources/
    │     ├─ application.yml          Shared settings, including MyBatis configuration
-   │     ├─ application-local.yml    Local Docker
-   │     ├─ application-aws.yml      RDS + Redis through SSM tunnels
-   │     ├─ application-seed.yml     Seeder settings (scale, demo accounts)
-   │     ├─ mapper/                  MyBatis XML mappers, one folder per feature
-   │     │  ├─ story/StoryMapper.xml, StorySearchMapper.xml
-   │     │  ├─ studio/ChapterMapper.xml, StudioStoryMapper.xml, DashboardMapper.xml
-   │     │  ├─ admin/…, library/…, rating/…, …
-   │     └─ seed/                    Vietnamese word lists and paragraph corpus for mock content
-   └─ test/java/com/novelle/        Unit tests and Testcontainers integration tests
-```
-
-Example of one feature package:
-
-```
-studio/
-├─ controller/   StudioStoryController, StudioChapterController, StudioDashboardController
-├─ service/      StudioStoryService, ChapterService, DraftService, RevisionService, DashboardService
-├─ mapper/       StudioStoryMapper, ChapterMapper, VolumeMapper, RevisionMapper, DashboardMapper  (@Mapper interfaces)
-├─ dto/          Request and response records sent over HTTP
-└─ model/        Plain Java objects that MyBatis maps rows into (Story, Chapter, Volume, …)
+   │     ├─ application-local.yml    RDS + Redis from docker compose
+   │     ├─ application-aws.yml      RDS + Redis on EC2 through the SSM tunnel
+   │     └─ mapper/                  MyBatis XML mappers (AuthMapper.xml, UserMapper.xml, StoryMapper.xml, …)
+   └─ test/java/com/novelle/        Unit and web-slice tests
 ```
 
 ### What each package does
 
 | Package | Responsibility |
 |---|---|
-| `config` | Builds the security filter chain, session cookie, CSRF, CORS, `RedisTemplate` serializers, scheduler thread pool and OpenAPI metadata. `MyBatisConfig` registers the custom type handlers. |
-| `common` | `ApiError` JSON format, `GlobalExceptionHandler` (maps validation, 401, 403, 404, 409, 429 errors), `PageRequest`/`PageResponse`, `CurrentUser` accessor, `HtmlSanitizer`, and MyBatis type handlers (`RowVersionTypeHandler` for `ROWVERSION` ↔ Base64 string, `ViewDeltaTableTypeHandler` for the TVP of `sp_FlushViews`). |
-| `auth` | Registration (always `READER`), login with BCrypt, logout, `GET /api/me`. Also contains `UserStatusFilter` (see [Section 5.1](#51-request-pipeline)). |
-| `user` | `AppUser` model, profile and avatar updates. |
-| `catalog` | Genre and tag lookups used by search filters and the studio, cached in Redis. |
-| `story` | Public read side. Queries select from `vw_PublicStory` so drafts, hidden and deleted stories never leak (RB3). Search uses MyBatis dynamic SQL to combine full-text search with optional filters. |
-| `reading` | Returns a published chapter, counts the view in Redis, and upserts `ReadingHistory`. |
-| `library` | Follow and unfollow stories and authors, reading history list, reading list CRUD. |
-| `rating` | One rating per user per story. The `trg_Rating` trigger keeps `Story.RatingAvg` and `Story.RatingCount` in sync. |
-| `authorrequest` | Reader side of F7 and the shared approve/reject service that calls `sp_ApproveAuthorRequest` / `sp_RejectAuthorRequest`. |
-| `studio` | Author-only CRUD with ownership checks (RB1, RB2), optimistic locking on chapters, Redis draft autosave, publish and schedule, revision restore, dashboard aggregates. |
-| `admin` | Admin-only endpoints: user management, review queue, moderation, catalog management, statistics. |
-| `cache` | `CacheService.getOrLoad(key, ttl, loader)` and `evict(...)`; all key names live in `CacheKeys`. |
-| `views` | `ViewCounterService.increment(...)` and `ViewFlushJob`, which moves counters from Redis to SQL Server every 60 seconds. |
-| `ratelimit` | Fixed-window counters (`rl:publish`, `rl:rating`, `rl:login`) applied with `@RateLimited`. |
-| `jobs` | Scheduled tasks that replace SQL Server Agent, which RDS Express does not have. |
-| `seed` | Generates deterministic mock data at `small`, `medium` or `large` scale, then recomputes derived columns. |
+| `config` | Builds the security filter chain, session cookie, CSRF, CORS, `RedisTemplate` serializers, scheduler thread pool, OpenAPI metadata and the Web MVC interceptors. |
+| `controller` | Maps HTTP to service calls and validates request DTOs. No business logic. |
+| `service` | Business rules RB1–RB16 and ownership checks (RB1, RB2), `@Transactional` boundaries, cache reads and evictions. |
+| `mapper` | MyBatis interfaces; the SQL is in the XML file of the same name. |
+| `model` | Plain Java objects that MyBatis maps rows into. |
+| `dto` | Request and response records sent over HTTP, plus `PageRequest` / `PageResponse`. |
+| `exception` | `ApiError` JSON format and `GlobalExceptionHandler` (validation, 401, 403, 404, 409, 429, stored-procedure error numbers). |
+| `infrastructure.security` | Session principal, current-user accessor, `UserStatusFilter` (see [Section 5.1](#51-request-pipeline)). |
+| `infrastructure.mybatis` | `RowVersionTypeHandler` and `ViewDeltaTableTypeHandler`. |
+| `infrastructure.cache` | `CacheService.getOrLoad(key, ttl, loader)` and `evict(...)`; all key names live in `CacheKeys`. |
+| `infrastructure.ratelimit` | Fixed-window counters (`rl:login`, `rl:register`, `rl:publish`, `rl:rating`) applied with `@RateLimited`. |
+| `infrastructure.views` | Counts views on Redis (Lua scripts in `resources/redis/`) and moves them to SQL Server every 60 seconds (`ViewFlusher`, `ViewFlushJob`). |
+| `infrastructure.jobs` | Scheduled tasks that replace SQL Server Agent, which RDS Express does not have. |
+| `infrastructure.html` | Sanitizes chapter HTML before it is saved. |
 
 ### MyBatis usage rules
 
 | Need | How it is written |
 |---|---|
-| Simple CRUD | `<select>`, `<insert useGeneratedKeys="true" keyProperty="…">`, `<update>`, `<delete>` in the feature's XML mapper |
+| Simple CRUD | `<select>`, `<insert useGeneratedKeys="true" keyProperty="…">`, `<update>`, `<delete>` in the mapper's XML file |
 | Multi-condition search | Dynamic SQL with `<where>`, `<if>`, `<foreach>` (genre and tag lists); never string concatenation |
 | Paging | `ORDER BY … OFFSET #{offset} ROWS FETCH NEXT #{size} ROWS ONLY`, written in the SQL |
 | Joins (story detail, table of contents) | `<resultMap>` with `<association>` and `<collection>` |
@@ -190,6 +155,16 @@ All settings of the project live in ONE file, `novelle/.env` (template: `novelle
 | `REDIS_PASSWORD` | empty locally | Application (required on AWS) |
 | `APP_CORS_ORIGINS` | `http://localhost:5173` | CORS config |
 | `SEED_DEMO_PASSWORD` | — | Password given to the demo accounts by the seeder |
+| `CACHE_CHAPTER_TTL` | `30m` | `cache:chapter:{id}` (F4) |
+| `VIEWS_KEY_PREFIX`, `VIEWS_SEEN_TTL`, `VIEWS_ZONE` | `views:`, `30m`, `Asia/Ho_Chi_Minh` | View counters: key prefix, one view per viewer and chapter in this window, calendar day of a view |
+| `VIEWS_FLUSH_INTERVAL`, `VIEWS_FLUSH_BATCH`, `VIEWS_FLUSH_MAX_BATCHES` | `60s`, `1000`, `20` | `ViewFlushJob` |
+| `JOBS_ENABLED` | `true` | `false` turns off every `@Scheduled` job (view flush): only for tests and local checks, counters then stay in Redis |
+| `RL_PROGRESS_MAX`, `RL_PROGRESS_WINDOW` | `120`, `60s` | Rate limit of `PUT /api/reading-progress/{storyId}` per user |
+| `RL_RATING_MAX`, `RL_RATING_WINDOW` | `10`, `60s` | Rate limit of `PUT` / `DELETE /api/stories/{id}/ratings/me` per user |
+| `RL_FOLLOW_MAX`, `RL_FOLLOW_WINDOW` | `60`, `60s` | Rate limit of follow / unfollow (stories and authors) per user |
+| `RL_AUTHOR_REQUEST_MAX`, `RL_AUTHOR_REQUEST_WINDOW` | `3`, `1d` | Rate limit of `POST /api/author-requests` per user |
+| `READING_LIST_MAX_LISTS`, `READING_LIST_MAX_ITEMS` | `50`, `500` | Reading lists per user, stories per list |
+| `APP_DEMO_REDIS_LOCK`, `AUTHOR_REQUEST_LOCK_TTL` | `false`, `5s` | Optional Redis lock `lock:author-request:{id}` before approving / rejecting (concurrency demo only) |
 
 ### 4.3 Spring profiles
 
@@ -205,7 +180,7 @@ Main MyBatis settings in `application.yml`:
 mybatis:
   mapper-locations: classpath:mapper/**/*.xml
   type-aliases-package: com.novelle
-  type-handlers-package: com.novelle.common.mybatis
+  type-handlers-package: com.novelle.infrastructure.mybatis
   configuration:
     default-statement-timeout: 30
     jdbc-type-for-null: NULL
@@ -275,9 +250,10 @@ Client (React SPA, cookie SESSION + X-XSRF-TOKEN header)
   ▼
 Spring Security filter chain
   ├─ SessionRepositoryFilter   loads the session from Redis (spring:session:*)
-  ├─ CsrfFilter                checks the XSRF token on POST/PUT/PATCH/DELETE
+  ├─ CorsFilter                CORS headers for the allowed origins (APP_CORS_ORIGINS)
   ├─ UserStatusFilter          re-reads Role and Status of the logged-in user by primary key;
   │                            BANNED users are logged out (RB12), role changes apply at once
+  ├─ CsrfFilter                checks the XSRF token on POST/PUT/PATCH/DELETE
   └─ Authorization rules       /api/studio/** → AUTHOR, /api/admin/** → ADMIN, writes need login
   │
   ▼
@@ -290,7 +266,7 @@ Controller      validates the request DTO (Bean Validation) and maps it to a ser
 Service         applies business rules (ownership, RB1–RB16), opens the @Transactional boundary,
   │             and reads or evicts the Redis cache
   ▼
-Mapper          MyBatis interface; the SQL is in resources/mapper/<feature>/*Mapper.xml
+Mapper          MyBatis interface; the SQL is in resources/mapper/*Mapper.xml
   │
   ▼
 SQL Server      constraints, triggers and stored procedures enforce invariants inside the database
@@ -309,41 +285,59 @@ Sessions use the default (non-indexed) Spring Session Redis repository, so they 
 
 ### 5.3 Reading a chapter (F4)
 
-1. Load the chapter from `cache:chapter:{id}`, or from SQL Server if missing. Only `PUBLISHED`, non-deleted chapters of a visible story are returned.
-2. `ViewCounterService` runs `INCR views:chapter:{id}`, `INCR views:story:{storyId}` and `SADD views:dirty ...` in one pipeline.
-3. For logged-in users, `ReadingHistoryMapper.upsert` runs a `MERGE` on `ReadingHistory(UserId, StoryId, LastChapterId, ScrollPercent)`. The frontend also calls `PUT /api/reading-progress/{storyId}` while the user scrolls.
+Spec: [`../../docs/module-reading.md`](../../docs/module-reading.md). `GET /api/chapters/{chapterId}` (`ChapterReadService.read`):
+
+1. `ChapterMapper.findPublicNav` runs on **every** request: `Chapter ⋈ vw_PublicStory ⟕ Volume` plus two correlated subqueries for the previous / next public chapter. No row → 404 `CHAPTER_NOT_FOUND`, so hiding or deleting a story or chapter takes effect even while its content is cached.
+2. Title, content, word count and publish time come from `cache:chapter:{id}` (30 min), loaded by `findContent` on a miss.
+3. For a logged-in user, `ReadingHistoryMapper.touch` runs one `MERGE ReadingHistory WITH (HOLDLOCK) … OUTPUT inserted.ScrollPercent`: another chapter moves the position there with scroll 0, the same chapter keeps the scroll, which is returned as `myScrollPercent`. The frontend calls `PUT /api/reading-progress/{storyId}` while the user scrolls (the service checks that the chapter belongs to the story, RB5).
+4. `ViewCounterService` runs `views-record.lua`: `SET views:seen:{chapterId}:{viewer} NX EX 1800`, and only if that succeeds `INCR views:story:{id}:{yyyyMMdd}`, `INCR views:chapter:{id}:{yyyyMMdd}`, `SADD views:dirty`. The day is the Vietnam calendar day of the view. Redis down → the view is skipped, the page still loads.
 
 ### 5.4 View counter flush (write-behind)
 
-`ViewFlushJob` runs every 60 seconds:
-1. Atomically takes the members of `views:dirty` and reads and resets their counters (`GETDEL`).
-2. Passes the batch to `sp_FlushViews` as a table-valued parameter (built by `ViewDeltaTableTypeHandler` from `SQLServerDataTable`). The procedure adds the values to `Story.ViewCount`, `Chapter.ViewCount` and `StoryViewDaily` in one transaction.
-3. If the call fails, the counts are added back to Redis so no views are lost. If Redis itself is lost, at most about 60 seconds of views are lost; this is the documented RPO for this data.
+`ViewFlushJob` calls `ViewFlusher.flush()` 60 seconds after the previous run ended (`fixedDelay`), and once more on a graceful shutdown. It exists only when `JOBS_ENABLED=true`; tests call `ViewFlusher` directly.
+1. `views-drain.lua` takes up to 1000 members with `SPOP views:dirty` and `GETDEL`s their counters in one script, so a view arriving meanwhile starts a new counter and several instances never flush the same counter.
+2. The batch goes to `sp_FlushViews` as the table-valued parameter `dbo.ViewDeltaTable` (`ViewDeltaBatchTypeHandler` builds a `SQLServerDataTable` and calls `setStructured`). The procedure adds the values to `Story.ViewCount`, `Chapter.ViewCount` and `StoryViewDaily` in one transaction.
+3. If the call fails, `views-restore.lua` adds the counts back (`INCRBY` + `SADD`). If Redis itself is lost, at most about 60 seconds of views are lost; this is the documented RPO for this data.
 
-### 5.5 Studio: writing and publishing chapters (F8–F9)
+### 5.5 Studio: writing and publishing chapters (F8–F10)
 
-1. **Ownership:** every studio service method checks that the current user is an `AUTHOR` and owns the story (RB1, RB2); otherwise it returns 403.
+Spec: [`../../docs/module-studio.md`](../../docs/module-studio.md).
+
+1. **Ownership:** `/api/studio/**` is AUTHOR only, and every query also filters `AuthorId = @me AND IsDeleted = 0` (`StudioOwnership`, RB1, RB2). A story, volume or chapter of someone else returns **404**, so its existence is not revealed.
 2. **Autosave:** the editor calls `PUT /api/studio/chapters/{id}/draft` every few seconds. The draft is stored only in the Redis hash `draft:{userId}:{chapterId}` (TTL 7 days), so typing does not create database writes.
-3. **Save:** `PUT /api/studio/chapters/{id}` sends the content together with the `rowVersion` the client last loaded.
+3. **Save:** `PUT /api/studio/chapters/{id}` sends the content together with the `version` the client last loaded. `version` is `UpdatedAt`, not `RowVer`: `sp_FlushViews` and the follow / rating triggers change `RowVer` every minute, which would give false conflicts.
    - The HTML is sanitized with jsoup and the word count is computed.
-   - `ChapterMapper.updateContent` runs `UPDATE … WHERE RowVer = #{rowVersion}`. If it returns 0 rows, the chapter was changed elsewhere and the API returns **409 Conflict**.
-   - The `trg_Chapter_Revision` trigger stores the previous version in `ChapterRevision`, and the Redis draft is deleted.
-4. **Publish now:** `POST /api/studio/chapters/{id}/publish` calls `sp_PublishChapter` through a `CALLABLE` statement. In one transaction it changes the chapter status and updates `Story.ChapterCount`, `WordCount`, `LastChapterAt` and, on the first publish, `PublishedAt` (RB9). The service then evicts the story and home caches.
-5. **Schedule:** the chapter is saved as `SCHEDULED` with `ScheduledAt`. `ScheduledPublishJob` calls `sp_PublishScheduled` every minute (RB11), because RDS Express has no SQL Server Agent.
-6. **Revisions:** `GET .../revisions` lists previous versions; restoring one saves it as a new version, since `ChapterRevision` is append-only (RB10).
+   - In one `@Transactional` method (one connection): `sp_set_session_context 'user_id'`, then `StudioChapterMapper.updateContent` runs `UPDATE … WHERE UpdatedAt = #{version}`. 0 rows → **409 `STALE_DATA`**.
+   - The `trg_Chapter_Revision` trigger stores the previous version in `ChapterRevision` (10 newest kept), and the Redis draft is deleted. A published chapter also runs `sp_RecalcStoryStats` and evicts its caches.
+4. **Publish now:** `POST /api/studio/chapters/{id}/publish` calls `sp_PublishChapter` through a `CALLABLE` statement. In one transaction it changes the chapter status, clears `ScheduledAt` and updates `Story.ChapterCount`, `WordCount`, `LastChapterAt` and, on the first publish, `PublishedAt` (RB9). The service then evicts the story and home caches. A story can be published (`DRAFT → PUBLISHED`) only once it has a published chapter; a story `HIDDEN` by an admin keeps its status.
+5. **Schedule:** the chapter is saved as `SCHEDULED` with `ScheduledAt`. `ScheduledPublishJob` calls `sp_PublishScheduled` every `STUDIO_PUBLISH_INTERVAL` (RB11), because RDS Express has no SQL Server Agent; the procedure reads due rows `WITH (UPDLOCK, READPAST)`, so instances never wait on each other.
+6. **Numbering:** new chapters and volumes get `MAX + 1` read `WITH (UPDLOCK, HOLDLOCK)` inside the `INSERT … SELECT`, so two concurrent inserts never collide on the unique index.
+7. **Revisions:** `GET .../revisions` lists previous versions; restoring one goes through the normal save, so the replaced text becomes a new revision, since `ChapterRevision` is append-only (RB10).
+8. **Dashboard:** `GET /api/studio/dashboard[/views|/stories|/followers]`: `vw_AuthorStats`, views per Vietnam day / month from `StoryViewDaily` (missing periods filled with 0), per-story stats with an "above my average rating" subquery, newest followers.
 
 ### 5.6 Becoming an author (F7, F11)
 
-1. A `READER` with `ACTIVE` status submits a request (pen name, bio). A filtered unique index allows at most one `PENDING` request per user (RB14).
-2. An admin lists `PENDING` requests and approves or rejects one. `AuthorRequestReviewService` calls `sp_ApproveAuthorRequest`, which:
-   - locks the request row with `UPDLOCK` and checks that it is still `PENDING`;
-   - sets it to `APPROVED`, changes the user's role to `AUTHOR` and creates the `AuthorProfile`, all in one transaction (RB15).
-3. If two admins act on the same request at the same time, the second one finds a non-`PENDING` status. The procedure raises an error, which the service maps to **409 Conflict**. The Redis lock `lock:author-request:{id}` (`SET NX PX`) exists only to compare this approach with SQL Server locking in the DBMS demo.
-4. The reader sees the result on the F7 page. Their next request already has the `AUTHOR` role because of `UserStatusFilter`.
+Spec: [`../../docs/module-author-request.md`](../../docs/module-author-request.md).
 
-### 5.7 Ratings (F6)
+1. An `ACTIVE` `READER` submits a request (`POST /api/author-requests`: proposed pen name, introduction). `AuthorRequestService` re-reads the role from the database, rejects a second `PENDING` request (the filtered unique index `UX_AuthorRequest_Pending` stops a concurrent one, RB14) and a pen name already used by an author. The reader can list (`GET /me`) and cancel (`POST /{id}/cancel`) their requests.
+2. An admin lists the queue (`GET /api/admin/author-requests?status=`, `PENDING` oldest first, with a "previously rejected" flag) and approves or rejects one. `AuthorRequestReviewService` is deliberately **not** `@Transactional`: it pre-checks the status (404 / 409 early) and calls `sp_ApproveAuthorRequest` / `sp_RejectAuthorRequest`, which open their own transaction and:
+   - lock the request row `WITH (UPDLOCK, HOLDLOCK)` and check that it is still `PENDING`;
+   - set it to `APPROVED`, change the user's role to `AUTHOR` and create the `Author` row, all in one transaction (RB15).
+3. If two admins act on the same request at the same time, the second one waits on the lock, then finds a non-`PENDING` status: error 50001 → **409 `ALREADY_PROCESSED`**. With `APP_DEMO_REDIS_LOCK=true` the service first takes `lock:author-request:{id}` (`SET NX PX`, released by a compare-and-delete Lua script); a busy lock answers 409 `REVIEW_IN_PROGRESS`. It exists only to compare with SQL Server locking; `database/queries/40_demo_approve_race.sql` shows the two-session race by hand.
+4. The applicant's next request already has the `AUTHOR` role because of `UserStatusFilter`.
 
-`PUT /api/stories/{storyId}/ratings/me` inserts or updates the user's rating with a `MERGE` in `RatingMapper`. Authors cannot rate their own stories and admins cannot rate at all (RB4, RB16). The `trg_Rating` trigger recalculates `Story.RatingAvg` and `RatingCount` in the same transaction, then the service evicts `cache:story:{id}`. The endpoint is limited by `rl:rating:{userId}`.
+### 5.7 Library and ratings (F5, F6)
+
+Spec: [`../../docs/module-library.md`](../../docs/module-library.md).
+
+**Ratings.** `PUT /api/stories/{storyId}/ratings/me` inserts or updates the user's rating with `MERGE dbo.Rating WITH (HOLDLOCK)` in `RatingMapper`. Authors cannot rate their own stories and admins cannot rate at all (RB4, RB16). The `trg_Rating` trigger recalculates `Story.RatingAvg` and `RatingCount` in the same transaction (every rating of one story updates that story row: a hot row), the service reads the new values back and evicts `cache:story:{id}`. `GET /api/stories/{storyId}/ratings` returns the 1–5 distribution (`GROUP BY Score`) and a page of ratings; `GET …/ratings/me` answers 204 when the user has not rated. Writes are limited by `rl:rating:u{userId}`.
+
+**Library.**
+
+- **Follow** stories and authors: `PUT` / `DELETE` are idempotent (`INSERT … WHERE NOT EXISTS … WITH (UPDLOCK, HOLDLOCK)`); `trg_Follow` / `trg_AuthorFollow` keep `Story.FollowCount` / `Author.FollowerCount`. Only public stories can be followed; unfollowing works for hidden ones.
+- **Reading lists**: every write first locks the list row (`WITH (UPDLOCK)`, ownership check in the same statement), so `OrderNo = MAX + 1` and `ItemCount` (kept by the service) stay correct under concurrent writes. Reorder is one `UPDATE … FROM … JOIN (VALUES …)`. Private lists of other users answer 404; public ones are readable by anyone and listed on `GET /api/users/{username}/reading-lists`.
+- **History**: `GET /api/library/history` lists the positions written by F4, public stories only.
+- The personal GETs under public paths (`/api/stories/*/follow`, `/api/stories/*/ratings/me`, `/api/authors/*/follow`) are listed as `authenticated()` in `SecurityConfig` before the public `/api/stories/**` rule.
 
 ### 5.8 Administration (F11–F13)
 

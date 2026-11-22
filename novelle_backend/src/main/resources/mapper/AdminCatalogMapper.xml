@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.AdminCatalogMapper">
+
+    <!-- ===================== genres ===================== -->
+
+    <!--
+      aggregate: unlike the public list (CatalogMapper.findGenresWithCount, public stories only) every story that
+      is not deleted is counted, drafts and hidden ones included
+    -->
+    <sql id="genreSelect">
+        SELECT g.GenreId, g.Name, g.Slug, g.Description, g.SortOrder, COUNT(s.StoryId) AS StoryCount
+        FROM dbo.Genre g
+        LEFT JOIN dbo.StoryGenre sg ON sg.GenreId = g.GenreId
+        LEFT JOIN dbo.Story s       ON s.StoryId  = sg.StoryId AND s.IsDeleted = 0
+    </sql>
+
+    <select id="listGenres" resultType="com.novelle.model.AdminGenre">
+        <include refid="genreSelect"/>
+        GROUP BY g.GenreId, g.Name, g.Slug, g.Description, g.SortOrder
+        ORDER BY g.SortOrder, g.GenreId
+    </select>
+
+    <select id="findGenre" resultType="com.novelle.model.AdminGenre" flushCache="true">
+        <include refid="genreSelect"/>
+        WHERE g.GenreId = #{genreId}
+        GROUP BY g.GenreId, g.Name, g.Slug, g.Description, g.SortOrder
+    </select>
+
+    <select id="genreTaken" resultType="boolean">
+        SELECT CASE WHEN EXISTS (
+            SELECT 1 FROM dbo.Genre
+            WHERE (Name = #{name} OR Slug = #{slug})
+              <if test="exceptId != null">AND GenreId &lt;&gt; #{exceptId}</if>
+        ) THEN 1 ELSE 0 END
+    </select>
+
+    <insert id="insertGenre" parameterType="com.novelle.model.AdminGenre"
+            useGeneratedKeys="true" keyProperty="genreId" keyColumn="GenreId">
+        INSERT dbo.Genre (Name, Slug, Description, SortOrder)
+        VALUES (#{name}, #{slug}, #{description, jdbcType=NVARCHAR}, #{sortOrder})
+    </insert>
+
+    <update id="updateGenre">
+        UPDATE dbo.Genre
+        <set>
+            <if test="name != null">Name = #{name},</if>
+            <if test="descriptionSet">Description = #{description, jdbcType=NVARCHAR},</if>
+            <if test="sortOrder != null">SortOrder = #{sortOrder},</if>
+        </set>
+        WHERE GenreId = #{genreId}
+    </update>
+
+    <select id="genreInUse" resultType="boolean">
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.StoryGenre WHERE GenreId = #{genreId}) THEN 1 ELSE 0 END
+    </select>
+
+    <delete id="deleteGenre">
+        DELETE dbo.Genre WHERE GenreId = #{genreId}
+    </delete>
+
+    <!-- ===================== tags ===================== -->
+
+    <sql id="tagWhere">
+        <where>
+            <if test="likePattern != null">Name LIKE #{likePattern}</if>
+        </where>
+    </sql>
+
+    <select id="pageTags" resultType="com.novelle.model.Tag">
+        SELECT TagId, Name, Slug, UsageCount
+        FROM dbo.Tag
+        <include refid="tagWhere"/>
+        ORDER BY UsageCount DESC, Name, TagId
+        OFFSET #{offset} ROWS FETCH NEXT #{size} ROWS ONLY
+    </select>
+
+    <select id="countTags" resultType="long">
+        SELECT COUNT(*) FROM dbo.Tag
+        <include refid="tagWhere"/>
+    </select>
+
+    <select id="findTag" resultType="com.novelle.model.Tag" flushCache="true">
+        SELECT TagId, Name, Slug, UsageCount FROM dbo.Tag WHERE TagId = #{tagId}
+    </select>
+
+    <select id="tagTaken" resultType="boolean">
+        SELECT CASE WHEN EXISTS (
+            SELECT 1 FROM dbo.Tag WHERE (Name = #{name} OR Slug = #{slug}) AND TagId &lt;&gt; #{exceptId}
+        ) THEN 1 ELSE 0 END
+    </select>
+
+    <update id="renameTag">
+        UPDATE dbo.Tag SET Name = #{name}, Slug = #{slug} WHERE TagId = #{tagId}
+    </update>
+
+    <select id="storyIdsWithTag" resultType="int">
+        SELECT StoryId FROM dbo.StoryTag WHERE TagId = #{tagId}
+    </select>
+
+    <!-- D5: StoryTag rows go first (FK), in the caller's transaction -->
+    <delete id="deleteStoryTagsOfTag">
+        DELETE dbo.StoryTag WHERE TagId = #{tagId}
+    </delete>
+
+    <delete id="deleteTag">
+        DELETE dbo.Tag WHERE TagId = #{tagId}
+    </delete>
+</mapper>

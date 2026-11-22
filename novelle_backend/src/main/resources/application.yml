@@ -27,9 +27,20 @@ spring:
       namespace: spring:session
     timeout: 7d
 
+  task:
+    scheduling:                      # used only when app.jobs.enabled (SchedulingConfig)
+      pool:
+        size: 2
+      thread-name-prefix: job-
+
   jackson:
     time-zone: UTC
     default-property-inclusion: non_null
+
+logging:
+  level:
+    root: INFO
+    com.novelle: DEBUG
 
 server:
   port: ${SERVER_PORT:8080}
@@ -43,11 +54,12 @@ server:
 mybatis:
   mapper-locations: classpath:mapper/**/*.xml
   type-aliases-package: com.novelle
-  type-handlers-package: com.novelle.common.mybatis
+  type-handlers-package: com.novelle.infrastructure.mybatis
   configuration:
     map-underscore-to-camel-case: false   # columns are PascalCase; auto-mapping is case-insensitive
     default-statement-timeout: 30
     jdbc-type-for-null: NULL
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
 springdoc:
   swagger-ui:
@@ -67,3 +79,77 @@ management:
 app:
   cors:
     allowed-origins: ${APP_CORS_ORIGINS:http://localhost:5173}
+  # Fixed-window limits used by @RateLimited("<name>"); Redis key rl:<name>:<ip|userId>.
+  rate-limit:
+    enabled: ${RL_ENABLED:true}
+    limits:
+      login:
+        max-requests: ${RL_LOGIN_MAX:10}
+        window: ${RL_LOGIN_WINDOW:60s}
+      register:
+        max-requests: ${RL_REGISTER_MAX:5}
+        window: ${RL_REGISTER_WINDOW:1h}
+      search:
+        max-requests: ${RL_SEARCH_MAX:60}
+        window: ${RL_SEARCH_WINDOW:60s}
+      progress:
+        max-requests: ${RL_PROGRESS_MAX:120}
+        window: ${RL_PROGRESS_WINDOW:60s}
+      rating:
+        max-requests: ${RL_RATING_MAX:10}
+        window: ${RL_RATING_WINDOW:60s}
+      follow:
+        max-requests: ${RL_FOLLOW_MAX:60}
+        window: ${RL_FOLLOW_WINDOW:60s}
+      author-request:
+        max-requests: ${RL_AUTHOR_REQUEST_MAX:3}
+        window: ${RL_AUTHOR_REQUEST_WINDOW:1d}
+      story-create:
+        max-requests: ${RL_STORY_CREATE_MAX:10}
+        window: ${RL_STORY_CREATE_WINDOW:1h}
+      publish:
+        max-requests: ${RL_PUBLISH_MAX:10}
+        window: ${RL_PUBLISH_WINDOW:60s}
+      draft:
+        max-requests: ${RL_DRAFT_MAX:30}
+        window: ${RL_DRAFT_WINDOW:60s}
+  # Cache-aside entries in Redis (CacheService, keys in CacheKeys); SQL Server stays the source of truth.
+  cache:
+    ttl:
+      genre: ${CACHE_GENRE_TTL:1h}
+      home: ${CACHE_HOME_TTL:2m}
+      story: ${CACHE_STORY_TTL:10m}
+      chapter: ${CACHE_CHAPTER_TTL:30m}
+      stats: ${CACHE_STATS_TTL:5m}
+  # View counting (G6): Redis counters per Vietnam calendar day, flushed to SQL Server by sp_FlushViews.
+  views:
+    key-prefix: ${VIEWS_KEY_PREFIX:views:}
+    seen-ttl: ${VIEWS_SEEN_TTL:30m}
+    zone: ${VIEWS_ZONE:Asia/Ho_Chi_Minh}
+    flush-interval: ${VIEWS_FLUSH_INTERVAL:60s}
+    flush-batch: ${VIEWS_FLUSH_BATCH:1000}
+    flush-max-batches: ${VIEWS_FLUSH_MAX_BATCHES:20}
+  # @Scheduled jobs (view flush, scheduled chapter publishing). Off in tests.
+  jobs:
+    enabled: ${JOBS_ENABLED:true}
+  # Public catalog (F1): stories per home block, ratings needed to enter "top rated".
+  catalog:
+    home-size: ${CATALOG_HOME_SIZE:12}
+    top-rated-min-ratings: ${CATALOG_TOP_RATED_MIN_RATINGS:10}
+  # Personal library (F5): reading lists per user, stories per list.
+  library:
+    max-lists: ${READING_LIST_MAX_LISTS:50}
+    max-items: ${READING_LIST_MAX_ITEMS:500}
+  # Author requests (F7/F11): optional Redis lock taken before sp_ApproveAuthorRequest / sp_RejectAuthorRequest,
+  # only to compare with the UPDLOCK inside the procedures (concurrency demo). The procedures stay the real guard.
+  author-request:
+    redis-lock:
+      enabled: ${APP_DEMO_REDIS_LOCK:false}
+      ttl: ${AUTHOR_REQUEST_LOCK_TTL:5s}
+  # Author studio (F8–F10): chapter drafts in Redis, chapter size, schedule window, scheduled-publish job.
+  studio:
+    draft-ttl: ${STUDIO_DRAFT_TTL:7d}
+    content-max-length: ${STUDIO_CONTENT_MAX_LENGTH:200000}
+    schedule-min-lead: ${STUDIO_SCHEDULE_MIN_LEAD:1m}
+    schedule-max-ahead: ${STUDIO_SCHEDULE_MAX_AHEAD:365d}
+    publish-interval: ${STUDIO_PUBLISH_INTERVAL:60s}

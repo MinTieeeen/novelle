@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.novelle.mapper.VolumeMapper">
+
+    <!-- aggregate: LEFT JOIN + GROUP BY so an empty volume shows 0 chapters -->
+    <select id="listByStory" resultType="com.novelle.model.StudioVolume">
+        SELECT v.VolumeId, v.StoryId, v.VolumeNo, v.Title, v.CreatedAt, COUNT(c.ChapterId) AS ChapterCount
+        FROM dbo.Volume v
+        LEFT JOIN dbo.Chapter c ON c.VolumeId = v.VolumeId AND c.IsDeleted = 0
+        WHERE v.StoryId = #{storyId}
+        GROUP BY v.VolumeId, v.StoryId, v.VolumeNo, v.Title, v.CreatedAt
+        ORDER BY v.VolumeNo
+    </select>
+
+    <!-- join Volume ⋈ Story: ownership comes from the story -->
+    <select id="findOwned" resultType="com.novelle.model.StudioVolume">
+        SELECT v.VolumeId, v.StoryId, v.VolumeNo, v.Title, v.CreatedAt,
+               (SELECT COUNT(*) FROM dbo.Chapter c WHERE c.VolumeId = v.VolumeId AND c.IsDeleted = 0) AS ChapterCount
+        FROM dbo.Volume v
+        JOIN dbo.Story s ON s.StoryId = v.StoryId
+        WHERE v.VolumeId = #{volumeId} AND s.AuthorId = #{authorId} AND s.IsDeleted = 0
+    </select>
+
+    <select id="isInStory" resultType="boolean">
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.Volume WHERE VolumeId = #{volumeId} AND StoryId = #{storyId})
+                    THEN 1 ELSE 0 END
+    </select>
+
+    <!--
+      Insert from a subquery (D7). UPDLOCK + HOLDLOCK put a key-range lock on UQ_Volume_Story_No for this story
+      until commit: a second request creating a volume of the same story waits, then reads the new MAX.
+      The aggregate without GROUP BY returns one row even when the story has no volume (MAX = NULL → 1).
+    -->
+    <insert id="insert" parameterType="com.novelle.model.StudioVolume"
+            useGeneratedKeys="true" keyProperty="volumeId" keyColumn="VolumeId">
+        INSERT dbo.Volume (StoryId, VolumeNo, Title)
+        SELECT #{storyId}, ISNULL(MAX(v.VolumeNo), 0) + 1, #{title}
+        FROM dbo.Volume v WITH (UPDLOCK, HOLDLOCK)
+        WHERE v.StoryId = #{storyId}
+    </insert>
+
+    <update id="rename">
+        UPDATE dbo.Volume SET Title = #{title} WHERE VolumeId = #{volumeId}
+    </update>
+
+    <select id="hasAnyChapter" resultType="boolean">
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM dbo.Chapter WHERE VolumeId = #{volumeId}) THEN 1 ELSE 0 END
+    </select>
+
+    <delete id="delete">
+        DELETE dbo.Volume WHERE VolumeId = #{volumeId}
+    </delete>
+</mapper>

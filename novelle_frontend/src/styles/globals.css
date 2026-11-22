@@ -1,0 +1,294 @@
+/*
+ * Novelle design system: "cham va nghe" (indigo and turmeric).
+ * Values mirror the light theme of the design system tokens.json (claude.ai artifact E8GRZtn61b9Z9tyRMdNytN).
+ * When a token changes, change it here only: components use the Tailwind names
+ * (bg-background, text-muted-foreground, bg-nghe, ...), never hex values.
+ */
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/*
+ * Light theme only. The site has no dark mode: no element ever gets the .dark class, so any `dark:` utility
+ * that a shadcn component brings in stays inert (Tailwind's default would follow the OS setting).
+ */
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* shadcn semantic colours */
+  --background: #f7f7fa; /* surface */
+  --foreground: #1b1c2b; /* ink */
+  --card: #ffffff; /* surface-raised */
+  --card-foreground: #1b1c2b;
+  --popover: #ffffff;
+  --popover-foreground: #1b1c2b;
+  --primary: #1f2160; /* cham */
+  --primary-foreground: #ffffff; /* on-cham */
+  --secondary: #eeeff5; /* surface-sunken */
+  --secondary-foreground: #1b1c2b;
+  --muted: #eeeff5;
+  --muted-foreground: #5b5d73; /* ink-muted */
+  --accent: #e6e7f5; /* cham-soft */
+  --accent-foreground: #1f2160;
+  --destructive: #b3261e; /* critical */
+  --destructive-foreground: #ffffff;
+  --border: #dcdde8; /* line */
+  --input: #8f92ad; /* line-strong */
+  --ring: #2e3290; /* focus */
+  --chart-1: #1f2160;
+  --chart-2: #e9a21a;
+  --chart-3: #276b4e;
+  --chart-4: #3a3f9e;
+  --chart-5: #a84d06;
+  /* The screen designs draw the Studio/Admin sidebar on surface-raised with a right border. */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1b1c2b;
+  --sidebar-primary: #1f2160;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e6e7f5;
+  --sidebar-accent-foreground: #1f2160;
+  --sidebar-border: #dcdde8;
+  --sidebar-ring: #2e3290;
+
+  /* Novelle-specific */
+  --cham-hover: #2e3290;
+  --link: #3a3f9e;
+  --nghe: #e9a21a;
+  --nghe-soft: #fbefd2;
+  --nghe-ink: #8a5a00;
+  --on-nghe: #1b1c2b;
+  --success: #276b4e;
+  --success-soft: #e1f1e9;
+  --warning: #a84d06;
+  --warning-soft: #fbe8d8;
+  --critical-soft: #f8e1df;
+  --scrim: rgb(14 15 34 / 0.55);
+  /* TopList medals (board TopList): gold, silver, bronze */
+  --medal-gold: #f4c65a;
+  --medal-gold-ring: #c98a0e;
+  --medal-gold-ink: #3d2a00;
+  --medal-silver: #d9dbe6;
+  --medal-silver-ring: #9a9db5;
+  --medal-silver-ink: #2b2d40;
+  --medal-bronze: #d49a6a;
+  --medal-bronze-ring: #9c5f2e;
+  --medal-bronze-ink: #2e1806;
+
+  --shadow-raise-value: 0 1px 2px rgb(31 33 96 / 0.06), 0 6px 20px rgb(31 33 96 / 0.08);
+  --shadow-cover-value: 0 2px 4px rgb(31 33 96 / 0.12), 0 10px 22px rgb(31 33 96 / 0.16);
+  --shadow-overlay-value: 0 24px 64px rgb(19 20 43 / 0.24);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-cham-hover: var(--cham-hover);
+  --color-link: var(--link);
+  --color-nghe: var(--nghe);
+  --color-nghe-soft: var(--nghe-soft);
+  --color-nghe-ink: var(--nghe-ink);
+  --color-on-nghe: var(--on-nghe);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-critical-soft: var(--critical-soft);
+  --color-scrim: var(--scrim);
+  --color-medal-gold: var(--medal-gold);
+  --color-medal-gold-ring: var(--medal-gold-ring);
+  --color-medal-gold-ink: var(--medal-gold-ink);
+  --color-medal-silver: var(--medal-silver);
+  --color-medal-silver-ring: var(--medal-silver-ring);
+  --color-medal-silver-ink: var(--medal-silver-ink);
+  --color-medal-bronze: var(--medal-bronze);
+  --color-medal-bronze-ring: var(--medal-bronze-ring);
+  --color-medal-bronze-ink: var(--medal-bronze-ink);
+
+  /* Current reading surface (set by [data-reader-theme]) */
+  --color-reader-bg: var(--r-bg);
+  --color-reader-ink: var(--r-ink);
+  --color-reader-muted: var(--r-muted);
+  --color-reader-line: var(--r-line);
+  --color-reader-bar: var(--r-bar);
+  --color-reader-hover: var(--r-hover);
+  --color-reader-accent: var(--r-accent);
+  --color-reader-accent-ink: var(--r-accent-ink);
+
+  /* Reading surfaces: fixed, independent of the site theme */
+  --color-reader-paper: #ffffff;
+  --color-reader-paper-ink: #23242f;
+  --color-reader-sepia: #f3e9d2;
+  --color-reader-sepia-ink: #4a3b28;
+  --color-reader-night: #0f1024;
+  --color-reader-night-ink: #cfcde0;
+
+  --font-sans: 'Montserrat', 'Segoe UI', system-ui, sans-serif;
+  --font-serif: 'Literata', Georgia, 'Times New Roman', serif;
+
+  /* Type scale: text-display, text-title-1..3, text-chapter-title, text-reading, text-body, ... */
+  --text-display: 44px;
+  --text-display--line-height: 48px;
+  --text-display--letter-spacing: -0.02em;
+  --text-title-1: 32px;
+  --text-title-1--line-height: 38px;
+  --text-title-1--letter-spacing: -0.01em;
+  --text-title-2: 24px;
+  --text-title-2--line-height: 30px;
+  --text-title-3: 19px;
+  --text-title-3--line-height: 26px;
+  --text-chapter-title: 28px;
+  --text-chapter-title--line-height: 36px;
+  --text-reading: 19px;
+  --text-reading--line-height: 33px;
+  --text-body: 15px;
+  --text-body--line-height: 24px;
+  --text-label: 14px;
+  --text-label--line-height: 20px;
+  --text-small: 13px;
+  --text-small--line-height: 20px;
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+  --radius-xl: 14px;
+  --radius-cover: 3px;
+
+  /* shadow-raise (popover, dropdown), shadow-overlay (dialog, sheet), shadow-cover (story covers only) */
+  --shadow-raise: var(--shadow-raise-value);
+  --shadow-cover: var(--shadow-cover-value);
+  --shadow-overlay: var(--shadow-overlay-value);
+
+  /* Layout: max-w-content, max-w-reading, w-sidebar, h-header */
+  --container-content: 1200px;
+  --container-reading: 680px;
+  --spacing-sidebar: 248px;
+  --spacing-header: 64px;
+}
+
+/*
+ * Reading surfaces of the chapter reader (ReaderToolbar, ChapterNav, ReaderSettings boards). Fixed sets that
+ * do not follow the site theme; the reader page sets data-reader-theme on its root and components use the
+ * reader-* colours (bg-reader-bg, text-reader-muted, border-reader-line, bg-reader-accent …).
+ */
+[data-reader-theme='paper'] {
+  --r-bg: #ffffff;
+  --r-ink: #23242f;
+  --r-muted: #5b5d73;
+  --r-line: #dcdde8;
+  --r-bar: #ffffff;
+  --r-hover: #eeeff5;
+  --r-accent: #1f2160;
+  --r-accent-ink: #ffffff;
+}
+[data-reader-theme='sepia'] {
+  --r-bg: #f3e9d2;
+  --r-ink: #4a3b28;
+  --r-muted: #6e5a40;
+  --r-line: #dccca8;
+  --r-bar: #efe3c8;
+  --r-hover: #e4d5b3;
+  --r-accent: #4a3b28;
+  --r-accent-ink: #f3e9d2;
+}
+[data-reader-theme='night'] {
+  --r-bg: #0f1024;
+  --r-ink: #cfcde0;
+  --r-muted: #a3a5c2;
+  --r-line: #2e3156;
+  --r-bar: #16172e;
+  --r-hover: #262a5c;
+  --r-accent: #b6baf7;
+  --r-accent-ink: #0f1024;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background font-sans text-body text-foreground antialiased;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-serif;
+    font-optical-sizing: auto;
+  }
+  /* Keyboard focus: 2px ring, 2px away from the element. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Bookmark ribbon (narrow rectangle, V-notched tail): logo, Doc tiep, current chapter, empty states. */
+@utility ribbon {
+  background: var(--nghe);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
+}
+
+/* Ribbon outline only, for a ribbon in another colour (grey in EmptyState): ribbon-shape bg-input */
+@utility ribbon-shape {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
+}
+
+/* Story cover drawn as a book: near-square corners, spine on the left edge, its own shadow. */
+@utility book-cover {
+  border-radius: var(--radius-cover);
+  box-shadow: var(--shadow-cover-value), inset 3px 0 0 rgb(0 0 0 / 0.18);
+  overflow: hidden;
+}
+
+/* Horizontal scrollers (genre bar, shelves on mobile): no visible scrollbar, still scrollable. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Counters and stats use tabular figures. */
+@utility num {
+  font-variant-numeric: tabular-nums;
+}
